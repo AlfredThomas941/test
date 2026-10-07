@@ -1,0 +1,815 @@
+     1→     1→/**
+     2→     2→ * Lingoland app store.
+     3→     3→ *
+     4→     4→ * This is a single-page application. The current "view" is part of app state
+     5→     5→ * rather than a URL. We persist user progress in localStorage so the experience
+     6→     6→ * survives reloads even without authentication; on login we sync to the backend.
+     7→     7→ */
+     8→     8→
+     9→     9→import { create } from "zustand";
+    10→    10→import { persist, createJSONStorage } from "zustand/middleware";
+    11→    11→import { COURSES, type CourseSpec, type LessonSpec, type ExerciseSpec } from "@/data/courses";
+    12→    12→import { ACHIEVEMENTS, QUESTS, BOT_LEARNERS } from "@/data/catalog";
+    13→    13→
+    14→    14→export type View =
+    15→    15→  | "landing"
+    16→    16→  | "login"
+    17→    17→  | "signup"
+    18→    18→  | "forgot"
+    19→    19→  | "onboarding-welcome"
+    20→    20→  | "onboarding-language"
+    21→    21→  | "onboarding-goal"
+    22→    22→  | "onboarding-target"
+    23→    23→  | "onboarding-motivation"
+    24→    24→  | "onboarding-placement"
+    25→    25→  | "onboarding-plan"
+    26→    26→  | "home"
+    27→    27→  | "learn" // learning path
+    28→    28→  | "lesson" // active lesson
+    29→    29→  | "lesson-complete"
+    30→    30→  | "practice"
+    31→    31→  | "stories"
+    32→    32→  | "leaderboard"
+    33→    33→  | "quests"
+    34→    34→  | "shop"
+    35→    35→  | "profile"
+    36→    36→  | "achievements"
+    37→    37→  | "stats"
+    38→    38→  | "ai-tutor"
+    39→    39→  | "ai-chat"
+    40→    40→  | "mistakes"
+    41→    41→  | "insights"
+    42→    42→  | "settings"
+    43→    43→  | "subscription"
+    44→    44→  | "admin"
+    45→    45→  | "notifications"
+    46→    46→  | "friends";
+    47→    47→
+    48→    48→export interface UserState {
+    49→    49→  id: string;
+    50→    50→  email: string;
+    51→    51→  name: string;
+    52→    52→  avatar: string; // emoji
+    53→    53→  country: string;
+    54→    54→  role: "learner" | "instructor" | "moderator" | "admin";
+    55→    55→  isAuthenticated: boolean;
+    56→    56→  createdAt: number;
+    57→    57→}
+    58→    58→
+    59→    59→export interface GamificationState {
+    60→    60→  totalXP: number;
+    61→    61→  weeklyXP: number;
+    62→    62→  dailyXP: number;
+    63→    63→  lastLessonAt: number | null;
+    64→    64→  currentStreak: number;
+    65→    65→  longestStreak: number;
+    66→    66→  hearts: number;
+    67→    67→  maxHearts: number;
+    68→    68→  gems: number;
+    69→    69→  league: string;
+    70→    70→  leagueRank: number;
+    71→    71→  dailyGoalXP: number;
+    72→    72→  conversationStreak: number;
+    73→    73→  streakFreezes: number;
+    74→    74→  boosts: { type: "2x_xp" | "perfect_double"; expiresAt: number }[];
+    75→    75→  // Confidence scores (0-100)
+    76→    76→  confidence: {
+    77→    77→    vocab: number;
+    78→    78→    grammar: number;
+    79→    79→    listening: number;
+    80→    80→    speaking: number;
+    81→    81→    reading: number;
+    82→    82→    writing: number;
+    83→    83→  };
+    84→    84→}
+    85→    85→
+    86→    86→export interface CourseProgress {
+    87→    87→  courseId: string;
+    88→    88→  completedLessons: string[];
+    89→    89→  lessonStars: Record<string, number>;
+    90→    90→  currentUnitOrder: number;
+    91→    91→  currentLessonOrder: number;
+    92→    92→  lastVisitedAt: number | null;
+    93→    93→}
+    94→    94→
+    95→    95→export interface ReviewItem {
+    96→    96→  id: string;
+    97→    97→  word: string;
+    98→    98→  translation: string;
+    99→    99→  pronunciation?: string;
+   100→   100→  languageId: string;
+   101→   101→  strength: number; // 0..1
+   102→   102→  intervalDays: number;
+   103→   103→  easeFactor: number;
+   104→   104→  repetitions: number;
+   105→   105→  correctCount: number;
+   106→   106→  wrongCount: number;
+   107→   107→  lastReviewAt: number | null;
+   108→   108→  nextReviewAt: number;
+   109→   109→}
+   110→   110→
+   111→   111→export interface MistakeEntry {
+   112→   112→  id: string;
+   113→   113→  languageId: string;
+   114→   114→  category: string;
+   115→   115→  prompt: string;
+   116→   116→  userAnswer: string;
+   117→   117→  correctAnswer: string;
+   118→   118→  explanation?: string;
+   119→   119→  occurrences: number;
+   120→   120→  lastAt: number;
+   121→   121→}
+   122→   122→
+   123→   123→export interface AchievementProgress {
+   124→   124→  id: string;
+   125→   125→  unlockedAt: number | null;
+   126→   126→}
+   127→   127→
+   128→   128→export interface QuestProgress {
+   129→   129→  id: string;
+   130→   130→  progress: number;
+   131→   131→  completed: boolean;
+   132→   132→  claimed: boolean;
+   133→   133→}
+   134→   134→
+   135→   135→export interface ChatMessage {
+   136→   136→  role: "user" | "assistant";
+   137→   137→  content: string;
+   138→   138→  translation?: string;
+   139→   139→  correction?: { said: string; better: string; why: string; example?: string };
+   140→   140→  ts: number;
+   141→   141→}
+   142→   142→
+   143→   143→export interface AIConversation {
+   144→   144→  id: string;
+   145→   145→  scenarioId: string;
+   146→   146→  languageId: string;
+   147→   147→  title: string;
+   148→   148→  messages: ChatMessage[];
+   149→   149→  createdAt: number;
+   150→   150→  updatedAt: number;
+   151→   151→}
+   152→   152→
+   153→   153→export interface Toast3D {
+   154→   154→  id: string;
+   155→   155→  text: string;
+   156→   156→  emoji?: string;
+   157→   157→  variant: "success" | "error" | "info";
+   158→   158→}
+   159→   159→
+   160→   160→interface AppState {
+   161→   161→  view: View;
+   162→   162→  viewParams: { lessonId?: string; unitId?: string; courseId?: string; scenarioId?: string; conversationId?: string; achievementId?: string };
+   163→   163→
+   164→   164→  user: UserState | null;
+   165→   165→  gamification: GamificationState;
+   166→   166→  activeCourseId: string | null;
+   167→   167→  coursesProgress: Record<string, CourseProgress>;
+   168→   168→  reviewItems: ReviewItem[];
+   169→   169→  mistakes: MistakeEntry[];
+   170→   170→  achievementsProgress: Record<string, AchievementProgress>;
+   171→   171→  questsProgress: Record<string, QuestProgress>;
+   172→   172→  aiConversations: AIConversation[];
+   173→   173→  notifications: NotificationItem[];
+   174→   174→  onboardedScenarios: string[];
+   175→   175→
+   176→   176→  // Lesson runtime
+   177→   177→  activeLesson: {
+   178→   178→    lessonId: string;
+   179→   179→    exercises: ExerciseSpec[];
+   180→   180→    currentIndex: number;
+   181→   181→    correctCount: number;
+   182→   182→    wrongCount: number;
+   183→   183→    earnedXP: number;
+   184→   184→    answers: { exerciseId: string; correct: boolean; userAnswer: string }[];
+   185→   185→    startedAt: number;
+   186→   186→  } | null;
+   187→   187→
+   188→   188→  // Focus mode
+   189→   189→  focusMode: boolean;
+   190→   190→  theme: "light" | "dark";
+   191→   191→  toasts: Toast3D[];
+   192→   192→
+   193→   193→  // Actions
+   194→   194→  setView: (view: View, params?: Partial<AppState["viewParams"]>) => void;
+   195→   195→  setUser: (user: UserState | null) => void;
+   196→   196→  loginDemo: () => void;
+   197→   197→  logout: () => void;
+   198→   198→  setActiveCourse: (courseId: string) => void;
+   199→   199→  startLesson: (lesson: LessonSpec) => void;
+   200→   200→  recordAnswer: (exerciseId: string, correct: boolean, userAnswer: string, xpEarned: number) => void;
+   201→   201→  advanceLesson: () => void;
+   202→   202→  completeLesson: () => { xpEarned: number; perfect: boolean; stars: number };
+   203→   203→  quitLesson: () => void;
+   204→   204→  addXP: (amount: number, reason: string) => void;
+   205→   205→  loseHeart: () => void;
+   206→   206→  refillHearts: () => void;
+   207→   207→  addGems: (amount: number) => void;
+   208→   208→  spendGems: (amount: number) => boolean;
+   209→   209→  buyShopItem: (itemId: string, priceGems: number, name: string) => boolean;
+   210→   210→  updateConfidence: (area: keyof GamificationState["confidence"], delta: number) => void;
+   211→   211→  addReviewItem: (item: Omit<ReviewItem, "id" | "nextReviewAt" | "lastReviewAt" | "repetitions" | "correctCount" | "wrongCount" | "easeFactor" | "intervalDays" | "strength">) => void;
+   212→   212→  reviewItem: (id: string, correct: boolean) => void;
+   213→   213→  addMistake: (entry: Omit<MistakeEntry, "id" | "occurrences" | "lastAt">) => void;
+   214→   214→  unlockAchievement: (id: string) => boolean;
+   215→   215→  progressQuest: (goalType: string, amount: number) => void;
+   216→   216→  claimQuest: (id: string) => void;
+   217→   217→  saveAIConversation: (conv: AIConversation) => void;
+   218→   218→  newAIConversation: (scenarioId: string, languageId: string, title: string) => string;
+   219→   219→  pushToast: (toast: Omit<Toast3D, "id">) => void;
+   220→   220→  dismissToast: (id: string) => void;
+   221→   221→  addNotification: (n: Omit<NotificationItem, "id" | "createdAt" | "read">) => void;
+   222→   222→  markNotificationRead: (id: string) => void;
+   223→   223→  setFocusMode: (on: boolean) => void;
+   224→   224→  setTheme: (theme: "light" | "dark") => void;
+   225→   225→  resetProgress: () => void;
+   226→   226→  setActiveMascot: (mascot: string) => void;
+   227→   227→}
+   228→   228→
+   229→   229→export interface NotificationItem {
+   230→   230→  id: string;
+   231→   231→  type: "friend" | "quest" | "achievement" | "streak" | "leaderboard" | "system";
+   232→   232→  title: string;
+   233→   233→  body: string;
+   234→   234→  icon: string;
+   235→   235→  link?: View;
+   236→   236→  read: boolean;
+   237→   237→  createdAt: number;
+   238→   238→}
+   239→   239→
+   240→   240→function genId(prefix = "id"): string {
+   241→   241→  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+   242→   242→}
+   243→   243→
+   244→   244→const initialGamification: GamificationState = {
+   245→   245→  totalXP: 0,
+   246→   246→  weeklyXP: 0,
+   247→   247→  dailyXP: 0,
+   248→   248→  lastLessonAt: null,
+   249→   249→  currentStreak: 0,
+   250→   250→  longestStreak: 0,
+   251→   251→  hearts: 5,
+   252→   252→  maxHearts: 5,
+   253→   253→  gems: 50,
+   254→   254→  league: "Bronze",
+   255→   255→  leagueRank: 0,
+   256→   256→  dailyGoalXP: 50,
+   257→   257→  conversationStreak: 0,
+   258→   258→  streakFreezes: 0,
+   259→   259→  boosts: [],
+   260→   260→  confidence: {
+   261→   261→    vocab: 20,
+   262→   262→    grammar: 20,
+   263→   263→    listening: 20,
+   264→   264→    speaking: 20,
+   265→   265→    reading: 20,
+   266→   266→    writing: 20,
+   267→   267→  },
+   268→   268→};
+   269→   269→
+   270→   270→// Check if streak should be reset (more than 1 day since last lesson)
+   271→   271→function computeStreakOnLoad(state: GamificationState): GamificationState {
+   272→   272→  if (!state.lastLessonAt) return state;
+   273→   273→  const now = Date.now();
+   274→   274→  const dayMs = 24 * 60 * 60 * 1000;
+   275→   275→  const daysSince = Math.floor((now - state.lastLessonAt) / dayMs);
+   276→   276→  if (daysSince <= 1) return state; // still active
+   277→   277→  if (state.streakFreezes > 0 && daysSince === 2) {
+   278→   278→    return { ...state, streakFreezes: state.streakFreezes - 1 };
+   279→   279→  }
+   280→   280→  return { ...state, currentStreak: 0, dailyXP: 0 };
+   281→   281→}
+   282→   282→
+   283→   283→export const useApp = create<AppState>()(
+   284→   284→  persist(
+   285→   285→    (set, get) => ({
+   286→   286→      view: "landing",
+   287→   287→      viewParams: {},
+   288→   288→
+   289→   289→      user: null,
+   290→   290→      gamification: initialGamification,
+   291→   291→      activeCourseId: null,
+   292→   292→      coursesProgress: {},
+   293→   293→      reviewItems: [],
+   294→   294→      mistakes: [],
+   295→   295→      achievementsProgress: {},
+   296→   296→      questsProgress: {},
+   297→   297→      aiConversations: [],
+   298→   298→      notifications: [],
+   299→   299→      onboardedScenarios: [],
+   300→   300→
+   301→   301→      activeLesson: null,
+   302→   302→      focusMode: false,
+   303→   303→      theme: "light",
+   304→   304→      toasts: [],
+   305→   305→
+   306→   306→      setView: (view, params = {}) =>
+   307→   307→        set((s) => ({ view, viewParams: { ...s.viewParams, ...params }, focusMode: view === "lesson" ? s.focusMode : s.focusMode })),
+   308→   308→
+   309→   309→      setUser: (user) => set({ user }),
+   310→   310→
+   311→   311→      loginDemo: () =>
+   312→   312→        set({
+   313→   313→          user: {
+   314→   314→            id: "demo-user",
+   315→   315→            email: "demo@lingoland.app",
+   316→   316→            name: "Lumo Learner",
+   317→   317→            avatar: "🦊",
+   318→   318→            country: "🌍",
+   319→   319→            role: "learner",
+   320→   320→            isAuthenticated: true,
+   321→   321→            createdAt: Date.now(),
+   322→   322→          },
+   323→   323→          view: "home",
+   324→   324→        }),
+   325→   325→
+   326→   326→      logout: () => set({ user: null, view: "landing" }),
+   327→   327→
+   328→   328→      setActiveCourse: (courseId) =>
+   329→   329→        set((s) => {
+   330→   330→          if (!s.coursesProgress[courseId]) {
+   331→   331→            const course = COURSES.find((c) => c.id === courseId);
+   332→   332→            s.coursesProgress[courseId] = {
+   333→   333→              courseId,
+   334→   334→              completedLessons: [],
+   335→   335→              lessonStars: {},
+   336→   336→              currentUnitOrder: 1,
+   337→   337→              currentLessonOrder: 1,
+   338→   338→              lastVisitedAt: null,
+   339→   339→            };
+   340→   340→            void course;
+   341→   341→          }
+   342→   342→          return { activeCourseId: courseId };
+   343→   343→        }),
+   344→   344→
+   345→   345→      startLesson: (lesson) =>
+   346→   346→        set({
+   347→   347→          view: "lesson",
+   348→   348→          activeLesson: {
+   349→   349→            lessonId: lesson.id,
+   350→   350→            exercises: lesson.exercises,
+   351→   351→            currentIndex: 0,
+   352→   352→            correctCount: 0,
+   353→   353→            wrongCount: 0,
+   354→   354→            earnedXP: 0,
+   355→   355→            answers: [],
+   356→   356→            startedAt: Date.now(),
+   357→   357→          },
+   358→   358→        }),
+   359→   359→
+   360→   360→      recordAnswer: (exerciseId, correct, userAnswer, xpEarned) =>
+   361→   361→        set((s) => {
+   362→   362→          if (!s.activeLesson) return {};
+   363→   363→          const al = { ...s.activeLesson };
+   364→   364→          al.answers = [...al.answers, { exerciseId, correct, userAnswer }];
+   365→   365→          if (correct) {
+   366→   366→            al.correctCount += 1;
+   367→   367→            al.earnedXP += xpEarned;
+   368→   368→          } else {
+   369→   369→            al.wrongCount += 1;
+   370→   370→          }
+   371→   371→          return { activeLesson: al };
+   372→   372→        }),
+   373→   373→
+   374→   374→      advanceLesson: () =>
+   375→   375→        set((s) => {
+   376→   376→          if (!s.activeLesson) return {};
+   377→   377→          return { activeLesson: { ...s.activeLesson, currentIndex: s.activeLesson.currentIndex + 1 } };
+   378→   378→        }),
+   379→   379→
+   380→   380→      completeLesson: () => {
+   381→   381→        const s = get();
+   382→   382→        if (!s.activeLesson) return { xpEarned: 0, perfect: false, stars: 0 };
+   383→   383→        const al = s.activeLesson;
+   384→   384→        const total = al.exercises.length;
+   385→   385→        const correct = al.correctCount;
+   386→   386→        const perfect = al.wrongCount === 0;
+   387→   387→        const stars = perfect ? 3 : al.wrongCount <= 1 ? 2 : 1;
+   388→   388→        const bonus = perfect ? Math.floor(al.earnedXP * 0.5) : 0;
+   389→   389→        const xpEarned = al.earnedXP + bonus;
+   390→   390→        // Update gamification
+   391→   391→        const now = Date.now();
+   392→   392→        const dayMs = 24 * 60 * 60 * 1000;
+   393→   393→        const lastTs = s.gamification.lastLessonAt;
+   394→   394→        const newStreak = lastTs && now - lastTs < dayMs * 2 ? s.gamification.currentStreak + 1 : 1;
+   395→   395→        const courseProgress = s.activeCourseId ? s.coursesProgress[s.activeCourseId] : null;
+   396→   396→        const newCoursesProgress = { ...s.coursesProgress };
+   397→   397→        if (s.activeCourseId && courseProgress) {
+   398→   398→          const cp = { ...courseProgress };
+   399→   399→          if (!cp.completedLessons.includes(al.lessonId)) {
+   400→   400→            cp.completedLessons = [...cp.completedLessons, al.lessonId];
+   401→   401→          }
+   402→   402→          cp.lessonStars = { ...cp.lessonStars, [al.lessonId]: Math.max(cp.lessonStars[al.lessonId] ?? 0, stars) };
+   403→   403→          // Advance pointer
+   404→   404→          const course = COURSES.find((c) => c.id === s.activeCourseId);
+   405→   405→          if (course) {
+   406→   406→            for (const unit of course.units) {
+   407→   407→              const idx = unit.lessons.findIndex((l) => l.id === al.lessonId);
+   408→   408→              if (idx >= 0) {
+   409→   409→                if (idx + 1 < unit.lessons.length) {
+   410→   410→                  cp.currentLessonOrder = idx + 2; // 1-indexed
+   411→   411→                  cp.currentUnitOrder = unit.order || 1;
+   412→   412→                } else {
+   413→   413→                  // Move to next unit
+   414→   414→                  const uIdx = course.units.findIndex((u) => u.id === unit.id);
+   415→   415→                  if (uIdx + 1 < course.units.length) {
+   416→   416→                    cp.currentUnitOrder = (course.units[uIdx + 1].order) || (uIdx + 2);
+   417→   417→                    cp.currentLessonOrder = 1;
+   418→   418→                  }
+   419→   419→                }
+   420→   420→                break;
+   421→   421→              }
+   422→   422→            }
+   423→   423→          }
+   424→   424→          cp.lastVisitedAt = now;
+   425→   425→          newCoursesProgress[s.activeCourseId] = cp;
+   426→   426→        }
+   427→   427→        const newGamification: GamificationState = {
+   428→   428→          ...s.gamification,
+   429→   429→          totalXP: s.gamification.totalXP + xpEarned,
+   430→   430→          weeklyXP: s.gamification.weeklyXP + xpEarned,
+   431→   431→          dailyXP: s.gamification.dailyXP + xpEarned,
+   432→   432→          lastLessonAt: now,
+   433→   433→          currentStreak: newStreak,
+   434→   434→          longestStreak: Math.max(s.gamification.longestStreak, newStreak),
+   435→   435→          hearts: perfect ? s.gamification.hearts : Math.min(s.gamification.maxHearts, s.gamification.hearts),
+   436→   436→        };
+   437→   437→        // Auto-unlock achievements
+   438→   438→        const newAchievements = { ...s.achievementsProgress };
+   439→   439→        const newNotifs: NotificationItem[] = [];
+   440→   440→        for (const ach of ACHIEVEMENTS) {
+   441→   441→          const already = newAchievements[ach.id]?.unlockedAt;
+   442→   442→          if (already) continue;
+   443→   443→          let value = 0;
+   444→   444→          if (ach.category === "streak") value = newGamification.currentStreak;
+   445→   445→          else if (ach.category === "xp") value = newGamification.totalXP;
+   446→   446→          else if (ach.category === "lesson") {
+   447→   447→            // Count completed lessons (with id prefixes)
+   448→   448→            const totalCompleted = Object.values(newCoursesProgress).reduce((acc, p) => acc + p.completedLessons.length, 0);
+   449→   449→            value = totalCompleted;
+   450→   450→            if (ach.id === "perfect-1") value = perfect ? 1 : (s.achievementsProgress["perfect-1"]?.unlockedAt ? 1 : 0);
+   451→   451→            if (ach.id === "perfect-10") value = 0; // we don't track historical; skip
+   452→   452→          } else if (ach.category === "skill") {
+   453→   453→            if (ach.id === "vocab-100" || ach.id === "vocab-500") value = s.reviewItems.length;
+   454→   454→            if (ach.id === "review-50") value = s.reviewItems.reduce((acc, r) => acc + r.correctCount, 0);
+   455→   455→          } else if (ach.category === "social") {
+   456→   456→            if (ach.id.startsWith("friend")) value = 0;
+   457→   457→            if (ach.id === "leaderboard-1") value = 0;
+   458→   458→          } else if (ach.category === "special") {
+   459→   459→            if (ach.id.startsWith("ai")) value = s.aiConversations.length;
+   460→   460→            if (ach.id.startsWith("quest")) {
+   461→   461→              value = Object.values(s.questsProgress).filter((q) => q.completed).length;
+   462→   462→            }
+   463→   463→          }
+   464→   464→          if (value >= ach.requirement) {
+   465→   465→            newAchievements[ach.id] = { unlockedAt: now };
+   466→   466→            newNotifs.push({
+   467→   467→              id: genId("ntf"),
+   468→   468→              type: "achievement",
+   469→   469→              title: `Achievement unlocked: ${ach.title}!`,
+   470→   470→              body: ach.description,
+   471→   471→              icon: ach.icon,
+   472→   472→              link: "achievements",
+   473→   473→              read: false,
+   474→   474→              createdAt: now,
+   475→   475→            });
+   476→   476→          }
+   477→   477→        }
+   478→   478→        // Progress quests
+   479→   479→        const newQuests = { ...s.questsProgress };
+   480→   480→        for (const q of QUESTS) {
+   481→   481→          const qp = newQuests[q.id] ?? { id: q.id, progress: 0, completed: false, claimed: false };
+   482→   482→          if (qp.completed) continue;
+   483→   483→          if (q.goalType === "xp" || q.goalType === "perfect") qp.progress += xpEarned;
+   484→   484→          if (q.goalType === "lessons") qp.progress += 1;
+   485→   485→          if (q.goalType === "perfect" && perfect) qp.progress += 1;
+   486→   486→          if (qp.progress >= q.goalAmount) {
+   487→   487→            qp.progress = q.goalAmount;
+   488→   488→            qp.completed = true;
+   489→   489→            newNotifs.push({
+   490→   490→              id: genId("ntf"),
+   491→   491→              type: "quest",
+   492→   492→              title: `Quest complete: ${q.title}`,
+   493→   493→              body: `Tap to claim ${q.xp} XP and ${q.gems} gems.`,
+   494→   494→              icon: q.icon,
+   495→   495→              link: "quests",
+   496→   496→              read: false,
+   497→   497→              createdAt: now,
+   498→   498→            });
+   499→   499→          }
+   500→   500→          newQuests[q.id] = { ...qp };
+   501→   501→        }
+   502→   502→        set({
+   503→   503→          gamification: newGamification,
+   504→   504→          coursesProgress: newCoursesProgress,
+   505→   505→          achievementsProgress: newAchievements,
+   506→   506→          questsProgress: newQuests,
+   507→   507→          notifications: [...newNotifs, ...s.notifications],
+   508→   508→          view: "lesson-complete",
+   509→   509→          activeLesson: { ...al, earnedXP: xpEarned },
+   510→   510→        });
+   511→   511→        return { xpEarned, perfect, stars };
+   512→   512→      },
+   513→   513→
+   514→   514→      quitLesson: () => set({ activeLesson: null, view: "learn" }),
+   515→   515→
+   516→   516→      addXP: (amount, reason) =>
+   517→   517→        set((s) => ({
+   518→   518→          gamification: {
+   519→   519→            ...s.gamification,
+   520→   520→            totalXP: s.gamification.totalXP + amount,
+   521→   521→            weeklyXP: s.gamification.weeklyXP + amount,
+   522→   522→            dailyXP: s.gamification.dailyXP + amount,
+   523→   523→          },
+   524→   524→        })),
+   525→   525→
+   526→   526→      loseHeart: () =>
+   527→   527→        set((s) => ({
+   528→   528→          gamification: { ...s.gamification, hearts: Math.max(0, s.gamification.hearts - 1) },
+   529→   529→        })),
+   530→   530→
+   531→   531→      refillHearts: () => set((s) => ({ gamification: { ...s.gamification, hearts: s.gamification.maxHearts } })),
+   532→   532→
+   533→   533→      addGems: (amount) => set((s) => ({ gamification: { ...s.gamification, gems: s.gamification.gems + amount } })),
+   534→   534→
+   535→   535→      spendGems: (amount) => {
+   536→   536→        const s = get();
+   537→   537→        if (s.gamification.gems < amount) return false;
+   538→   538→        set({ gamification: { ...s.gamification, gems: s.gamification.gems - amount } });
+   539→   539→        return true;
+   540→   540→      },
+   541→   541→
+   542→   542→      buyShopItem: (itemId, priceGems, name) => {
+   543→   543→        const s = get();
+   544→   544→        if (s.gamification.gems < priceGems) return false;
+   545→   545→        const newNotif: NotificationItem = {
+   546→   546→          id: genId("ntf"),
+   547→   547→          type: "system",
+   548→   548→          title: `Purchased: ${name}`,
+   549→   549→          body: "Your item is ready in your profile.",
+   550→   550→          icon: "🛍️",
+   551→   551→          link: "profile",
+   552→   552→          read: false,
+   553→   553→          createdAt: Date.now(),
+   554→   554→        };
+   555→   555→        // Apply item effects
+   556→   556→        let g = { ...s.gamification, gems: s.gamification.gems - priceGems };
+   557→   557→        if (itemId === "heart-refill") g.hearts = g.maxHearts;
+   558→   558→        if (itemId === "heart-1") g.hearts = Math.min(g.maxHearts, g.hearts + 1);
+   559→   559→        if (itemId === "streak-freeze") g.streakFreezes += 1;
+   560→   560→        if (itemId === "boost-2x-15") g.boosts = [...g.boosts, { type: "2x_xp", expiresAt: Date.now() + 15 * 60 * 1000 }];
+   561→   561→        if (itemId === "boost-perfect-1") g.boosts = [...g.boosts, { type: "perfect_double", expiresAt: Date.now() + 60 * 60 * 1000 }];
+   562→   562→        set({ gamification: g, notifications: [newNotif, ...s.notifications] });
+   563→   563→        return true;
+   564→   564→      },
+   565→   565→
+   566→   566→      updateConfidence: (area, delta) =>
+   567→   567→        set((s) => {
+   568→   568→          const v = Math.max(0, Math.min(100, s.gamification.confidence[area] + delta));
+   569→   569→          return { gamification: { ...s.gamification, confidence: { ...s.gamification.confidence, [area]: v } } };
+   570→   570→        }),
+   571→   571→
+   572→   572→      addReviewItem: (item) =>
+   573→   573→        set((s) => {
+   574→   574→          const exists = s.reviewItems.find((r) => r.word === item.word && r.languageId === item.languageId);
+   575→   575→          if (exists) return {};
+   576→   576→          const ri: ReviewItem = {
+   577→   577→            ...item,
+   578→   578→            id: genId("rv"),
+   579→   579→            strength: 0.2,
+   580→   580→            intervalDays: 1,
+   581→   581→            easeFactor: 2.5,
+   582→   582→            repetitions: 0,
+   583→   583→            correctCount: 0,
+   584→   584→            wrongCount: 0,
+   585→   585→            lastReviewAt: null,
+   586→   586→            nextReviewAt: Date.now(),
+   587→   587→          };
+   588→   588→          return { reviewItems: [ri, ...s.reviewItems] };
+   589→   589→        }),
+   590→   590→
+   591→   591→      reviewItem: (id, correct) =>
+   592→   592→        set((s) => {
+   593→   593→          const items = s.reviewItems.map((r) => {
+   594→   594→            if (r.id !== id) return r;
+   595→   595→            const ease = Math.max(1.3, r.easeFactor + (correct ? 0.1 : -0.2));
+   596→   596→            const reps = correct ? r.repetitions + 1 : 0;
+   597→   597→            const interval = correct ? Math.max(1, Math.round(r.intervalDays * ease)) : 1;
+   598→   598→            return {
+   599→   599→              ...r,
+   600→   600→              easeFactor: ease,
+   601→   601→              repetitions: reps,
+   602→   602→              intervalDays: interval,
+   603→   603→              correctCount: r.correctCount + (correct ? 1 : 0),
+   604→   604→              wrongCount: r.wrongCount + (correct ? 0 : 1),
+   605→   605→              strength: Math.max(0, Math.min(1, r.strength + (correct ? 0.15 : -0.3))),
+   606→   606→              lastReviewAt: Date.now(),
+   607→   607→              nextReviewAt: Date.now() + interval * 24 * 60 * 60 * 1000,
+   608→   608→            };
+   609→   609→          });
+   610→   610→          return { reviewItems: items };
+   611→   611→        }),
+   612→   612→
+   613→   613→      addMistake: (entry) =>
+   614→   614→        set((s) => {
+   615→   615→          const existing = s.mistakes.find(
+   616→   616→            (m) => m.prompt === entry.prompt && m.userAnswer === entry.userAnswer
+   617→   617→          );
+   618→   618→          if (existing) {
+   619→   619→            return {
+   620→   620→              mistakes: s.mistakes.map((m) =>
+   621→   621→                m === existing ? { ...m, occurrences: m.occurrences + 1, lastAt: Date.now() } : m
+   622→   622→              ),
+   623→   623→            };
+   624→   624→          }
+   625→   625→          return {
+   626→   626→            mistakes: [{ ...entry, id: genId("mk"), occurrences: 1, lastAt: Date.now() }, ...s.mistakes],
+   627→   627→          };
+   628→   628→        }),
+   629→   629→
+   630→   630→      unlockAchievement: (id) => {
+   631→   631→        const s = get();
+   632→   632→        if (s.achievementsProgress[id]?.unlockedAt) return false;
+   633→   633→        const ach = ACHIEVEMENTS.find((a) => a.id === id);
+   634→   634→        const now = Date.now();
+   635→   635→        const notif: NotificationItem = ach
+   636→   636→          ? {
+   637→   637→              id: genId("ntf"),
+   638→   638→              type: "achievement",
+   639→   639→              title: `Achievement: ${ach.title}`,
+   640→   640→              body: ach.description,
+   641→   641→              icon: ach.icon,
+   642→   642→              link: "achievements",
+   643→   643→              read: false,
+   644→   644→              createdAt: now,
+   645→   645→            }
+   646→   646→          : {
+   647→   647→              id: genId("ntf"),
+   648→   648→              type: "achievement",
+   649→   649→              title: "Achievement unlocked!",
+   650→   650→              body: "",
+   651→   651→              icon: "🏆",
+   652→   652→              link: "achievements",
+   653→   653→              read: false,
+   654→   654→              createdAt: now,
+   655→   655→            };
+   656→   656→        set({
+   657→   657→          achievementsProgress: { ...s.achievementsProgress, [id]: { unlockedAt: now } },
+   658→   658→          notifications: [notif, ...s.notifications],
+   659→   659→        });
+   660→   660→        return true;
+   661→   661→      },
+   662→   662→
+   663→   663→      progressQuest: (goalType, amount) =>
+   664→   664→        set((s) => {
+   665→   665→          const newQuests = { ...s.questsProgress };
+   666→   666→          const now = Date.now();
+   667→   667→          const newNotifs: NotificationItem[] = [];
+   668→   668→          for (const q of QUESTS) {
+   669→   669→            if (q.goalType !== goalType) continue;
+   670→   670→            const qp = newQuests[q.id] ?? { id: q.id, progress: 0, completed: false, claimed: false };
+   671→   671→            if (qp.completed) continue;
+   672→   672→            qp.progress = Math.min(q.goalAmount, qp.progress + amount);
+   673→   673→            if (qp.progress >= q.goalAmount && !qp.completed) {
+   674→   674→              qp.completed = true;
+   675→   675→              newNotifs.push({
+   676→   676→                id: genId("ntf"),
+   677→   677→                type: "quest",
+   678→   678→                title: `Quest complete: ${q.title}`,
+   679→   679→                body: `Tap to claim ${q.xp} XP and ${q.gems} gems.`,
+   680→   680→                icon: q.icon,
+   681→   681→                link: "quests",
+   682→   682→                read: false,
+   683→   683→                createdAt: now,
+   684→   684→              });
+   685→   685→            }
+   686→   686→            newQuests[q.id] = { ...qp };
+   687→   687→          }
+   688→   688→          return { questsProgress: newQuests, notifications: [...newNotifs, ...s.notifications] };
+   689→   689→        }),
+   690→   690→
+   691→   691→      claimQuest: (id) =>
+   692→   692→        set((s) => {
+   693→   693→          const qp = s.questsProgress[id];
+   694→   694→          if (!qp || !qp.completed || qp.claimed) return {};
+   695→   695→          const q = QUESTS.find((qq) => qq.id === id);
+   696→   696→          if (!q) return {};
+   697→   697→          return {
+   698→   698→            questsProgress: { ...s.questsProgress, [id]: { ...qp, claimed: true } },
+   699→   699→            gamification: {
+   700→   700→              ...s.gamification,
+   701→   701→              totalXP: s.gamification.totalXP + q.xp,
+   702→   702→              weeklyXP: s.gamification.weeklyXP + q.xp,
+   703→   703→              dailyXP: s.gamification.dailyXP + q.xp,
+   704→   704→              gems: s.gamification.gems + q.gems,
+   705→   705→            },
+   706→   706→          };
+   707→   707→        }),
+   708→   708→
+   709→   709→      saveAIConversation: (conv) =>
+   710→   710→        set((s) => {
+   711→   711→          const existing = s.aiConversations.find((c) => c.id === conv.id);
+   712→   712→          if (existing) {
+   713→   713→            return { aiConversations: s.aiConversations.map((c) => (c.id === conv.id ? conv : c)) };
+   714→   714→          }
+   715→   715→          return { aiConversations: [conv, ...s.aiConversations] };
+   716→   716→        }),
+   717→   717→
+   718→   718→      newAIConversation: (scenarioId, languageId, title) => {
+   719→   719→        const id = genId("ai");
+   720→   720→        const conv: AIConversation = {
+   721→   721→          id,
+   722→   722→          scenarioId,
+   723→   723→          languageId,
+   724→   724→          title,
+   725→   725→          messages: [],
+   726→   726→          createdAt: Date.now(),
+   727→   727→          updatedAt: Date.now(),
+   728→   728→        };
+   729→   729→        set((s) => ({ aiConversations: [conv, ...s.aiConversations] }));
+   730→   730→        return id;
+   731→   731→      },
+   732→   732→
+   733→   733→      pushToast: (toast) =>
+   734→   734→        set((s) => {
+   735→   735→          const id = genId("tst");
+   736→   736→          const t: Toast3D = { id, ...toast };
+   737→   737→          setTimeout(() => {
+   738→   738→            get().dismissToast(id);
+   739→   739→          }, 2600);
+   740→   740→          return { toasts: [...s.toasts, t] };
+   741→   741→        }),
+   742→   742→
+   743→   743→      dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+   744→   744→
+   745→   745→      addNotification: (n) =>
+   746→   746→        set((s) => ({
+   747→   747→          notifications: [{ ...n, id: genId("ntf"), read: false, createdAt: Date.now() }, ...s.notifications],
+   748→   748→        })),
+   749→   749→
+   750→   750→      markNotificationRead: (id) =>
+   751→   751→        set((s) => ({
+   752→   752→          notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+   753→   753→        })),
+   754→   754→
+   755→   755→      setFocusMode: (on) => set({ focusMode: on }),
+   756→   756→
+   757→   757→      setTheme: (theme) => set({ theme }),
+   758→   758→
+   759→   759→      resetProgress: () =>
+   760→   760→        set({
+   761→   761→          gamification: initialGamification,
+   762→   762→          coursesProgress: {},
+   763→   763→          reviewItems: [],
+   764→   764→          mistakes: [],
+   765→   765→          achievementsProgress: {},
+   766→   766→          questsProgress: {},
+   767→   767→          aiConversations: [],
+   768→   768→          activeLesson: null,
+   769→   769→          view: "home",
+   770→   770→        }),
+   771→   771→
+   772→   772→      setActiveMascot: (_mascot) => set({}), // placeholder for cosmetics
+   773→   773→    }),
+   774→   774→    {
+   775→   775→      name: "lingoland-app",
+   776→   776→      storage: createJSONStorage(() => localStorage),
+   777→   777→      onRehydrateStorage: () => (state) => {
+   778→   778→        if (state) {
+   779→   779→          state.gamification = computeStreakOnLoad(state.gamification);
+   780→   780→        }
+   781→   781→      },
+   782→   782→    }
+   783→   783→  )
+   784→   784→);
+   785→   785→
+   786→   786→/** Helper: get the active course spec */
+   787→   787→export function useActiveCourse(): CourseSpec | null {
+   788→   788→  const id = useApp((s) => s.activeCourseId);
+   789→   789→  return COURSES.find((c) => c.id === id) ?? null;
+   790→   790→}
+   791→   791→
+   792→   792→/** Helper: leaderboard data with current user mixed in */
+   793→   793→export function useLeaderboard() {
+   794→   794→  const me = useApp((s) => s.gamification.weeklyXP);
+   795→   795→  const myName = useApp((s) => s.user?.name ?? "You");
+   796→   796→  const myAvatar = useApp((s) => s.user?.avatar ?? "🦊");
+   797→   797→  const myLeague = useApp((s) => s.gamification.league);
+   798→   798→  // Generate consistent weekly XP for bots based on time of week
+   799→   799→  const now = new Date();
+   800→   800→  const weekStart = new Date(now);
+   801→   801→  weekStart.setHours(0, 0, 0, 0);
+   802→   802→  weekStart.setDate(now.getDate() - now.getDay());
+   803→   803→  const dayOfWeek = (now.getTime() - weekStart.getTime()) / (24 * 60 * 60 * 1000);
+   804→   804→  const roster = BOT_LEARNERS.map((b, i) => ({
+   805→   805→    name: b.name,
+   806→   806→    avatar: b.avatar,
+   807→   807→    country: b.country,
+   808→   808→    xp: Math.max(20, Math.round(b.baseXP * (0.4 + dayOfWeek / 7 * 0.6) + Math.sin(i * 1.3) * 30)),
+   809→   809→    isMe: false,
+   810→   810→  }));
+   811→   811→  roster.push({ name: myName, avatar: myAvatar, country: "🌍", xp: me, isMe: true });
+   812→   812→  roster.sort((a, b) => b.xp - a.xp);
+   813→   813→  return { roster, league: myLeague };
+   814→   814→}
+   815→   815→

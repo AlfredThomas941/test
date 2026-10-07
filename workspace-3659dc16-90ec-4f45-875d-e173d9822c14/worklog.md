@@ -1,0 +1,59 @@
+---
+
+**Task ID:** PATH-1
+
+**Agent:** general-purpose
+
+**Task:** Build the Learning Path view component (`LearnView`) for the Lingoland language-learning app — a visually engaging vertical progression of lesson nodes (Duolingo-style winding path) with course picker, state derivation, framer-motion animations, and accessible node buttons.
+
+**Work Log:**
+
+1. **Read context**: Explored project structure, store (`/src/lib/store.ts`), course data (`/src/data/courses.ts`), brand primitives (`Button3D`, `Lumo`, `LumoFace`, `ProgressBar`, `StarRow`, `Logo`), existing views (`landing.tsx`, `auth.tsx`), and `AppShell` to confirm integration patterns. Verified `setActiveCourse` auto-initializes `CourseProgress` with `currentUnitOrder = 1`, `currentLessonOrder = 1` for fresh courses.
+
+2. **Created `/home/z/my-project/src/components/views/learn.tsx`** — a single self-contained "use client" component exporting `LearnView`, with internal sub-components for clarity:
+   - `deriveLessonState()` — pure helper computing `completed | current | available | locked` from `CourseProgress`, walking both unit boundaries (previous unit must be fully completed) and intra-unit ordering (previous lesson must be completed).
+   - `LessonNode` — circular chunky button (84px, 104px when current) with 3D shadow, Lucide icon per `lesson.type`, star badge for completed, sparkle badge for bonus, pulsing rings for current, lock icon + 60% opacity for locked, START pill below current, lesson title label. Accessible `aria-label` like "Lesson: Greetings, completed, 3 stars" / "Lesson: Numbers, locked".
+   - `Ribbon` — SVG cubic-bezier path connecting each pair of nodes, colored with `unit.color`, with a dashed white center stripe for a winding-road feel.
+   - `UnitSection` — unit header card (color accent, title, subtitle, description, mini progress bar, Start button that jumps to first non-completed lesson in unit and is disabled when unit is locked) followed by the vertical path of nodes in a 3-position zig-zag (`-50%, 0, +50%` translateX cycle).
+   - `CoursePickerModal` — animated modal listing all 3 courses (Spanish/Japanese/French) with flags, unit/lesson counts, active-course checkmark. Calls `setActiveCourse(id)` on pick.
+   - `EmptyCourseState` — 3-column grid of course picker cards with Lumo mascot and gradient, shown when `activeCourseId` is null.
+   - `EndOfPathCard` — Lumo waving + "You've reached the end of available content!" + "Practice what you've learned" button that calls `setView("practice")`.
+   - `LearnView` — top-level: header (flag, course title, overall progress bar, "Switch" button), main path with all units, end-of-path card when all lessons done, course picker modal.
+
+3. **Behavior wired**: node click → `setView("lesson", { lessonId })` for available/current; locked click → `pushToast({ text: "Complete previous lessons first", emoji: "🔒", variant: "info" })`. Course picker pick → `setActiveCourse(id)` + close modal. Bonus/challenge lessons get gold/purple color overrides when not locked or completed.
+
+4. **Animation**: framer-motion stagger-in per node (`delay = min(idx*0.05, 0.6)`, spring), pulsing rings on current node, bounce-in for bonus sparkle, spring drop-in for START pill, modal spring scale, Lumo float + wave.
+
+5. **Responsive / accessibility**: max-width 600px container centered; nodes use percentage translateX so zig-zag scales gracefully on mobile. Every node is a real `<button>` with descriptive `aria-label`; modal has `role="dialog"` + `aria-modal`. Locked buttons set `aria-disabled`.
+
+6. **Lint & type check**: ran `bun run lint` (clean) and `bunx tsc --noEmit` (no errors in `learn.tsx`; remaining pre-existing TS errors in `store.ts`, `examples/`, `skills/` are out of scope for this task). Fixed one initial TS issue: replaced `["--btn-shadow" as React.CSSProperties["--btn-shadow"]]` with the project's standard `["--btn-shadow" as any]` cast pattern (matching `Button3D` and `AppShell`).
+
+**Stage Summary:**
+
+`LearnView` is complete and integrated into the existing component tree. It consumes the Zustand store and the `COURSES` data exactly as the rest of the app does, uses the brand primitives (`Button3D`, `Lumo`, `LumoFace`, `ProgressBar`, `StarRow`) consistently, and produces a polished, animated, accessible learning path. No other files were modified. The component is ready to be wired into the router — `AppShell` already includes "Learn" in the primary nav (`view: "learn"`), so visiting that nav item will render `LearnView` once the parent layout calls it. Recommended next step (out of scope for PATH-1): update `src/app/page.tsx` (or the view switcher) to render `<LearnView />` when `view === "learn"`.
+
+---
+
+**Task ID:** LESSON-1
+
+**Agent:** general-purpose
+
+**Task:** Build the Lesson shell + completion views (`LessonView` and `LessonCompleteView`) for the Lingoland language-learning app — wire the active lesson runtime (boot from `viewParams.lessonId`, delegate to `ExerciseRunner`, handle out-of-hearts, lesson-not-found) and a celebratory completion screen (confetti, animated count-up reward cards, stars, perfect badge, achievement unlocks, next-lesson CTA).
+
+**Work Log:**
+
+1. **Read context**: Read `worklog.md` (PATH-1 prior work). Explored the Zustand store (`src/lib/store.ts`) — confirmed `startLesson`, `recordAnswer`, `advanceLesson`, `completeLesson` (returns `{ xpEarned, perfect, stars }` and transitions `view` to `lesson-complete`, also updating gamification/streak/achievements/coursesProgress in one shot), `quitLesson`, `refillHearts`, `spendGems`, `pushToast`, plus `activeLesson` shape (`{ lessonId, exercises, currentIndex, correctCount, wrongCount, earnedXP, answers, startedAt }`). Inspected `findLesson(lessonId)` in `src/data/courses.ts` (returns `{ lesson, course, unit }`), `ExerciseRunner` props/signature in `src/components/exercises/runner.tsx`, brand primitives (`Button3D`, `Lumo`, `ProgressBar`, `StarRow`), the `Confetti` component in `app-shell.tsx`, the `ACHIEVEMENTS` catalog (with `icon`/`title`/`description`), and the project's chunky-button shadow convention (`["--btn-shadow" as any]` + `shadow-chunk` utility).
+
+2. **Created `/home/z/my-project/src/components/views/lesson.tsx`** — single self-contained "use client" module exporting `LessonView` and `LessonCompleteView`, plus four internal sub-components:
+   - `useCountUp(target, duration, delay)` — RAF-driven easeOutCubic count-up hook used to animate the XP/accuracy/streak/gems numbers on the celebration screen. Declared unconditionally in `LessonCompleteView` to satisfy React's rules-of-hooks (early return for the "no active lesson" fallback happens after all hooks).
+   - `findNextLessonInUnit(lessonId)` — pure helper that returns the next `LessonSpec` in the same `unit.lessons` array, or `null`. Used to drive the "Continue" CTA (next lesson vs. back to learn).
+   - **`LessonView`** — boots the lesson via a memoized `findLesson(lessonId)` lookup + `startLesson(found.lesson)` effect (mount-only when `activeLesson` is null). Renders a sticky top bar with `[X quit] [ProgressBar: (currentIndex+1)/total] [♥ hearts/max]` and a thin uppercase lesson-title row beneath. Delegates the exercise UI to `<ExerciseRunner>` with proper callbacks: `onAnswered` → `recordAnswer(current.id, correct, userAnswer, xp)`, `onNext` → `completeLesson()` if last exercise else `advanceLesson()`, `onQuit` → `quitLesson()`. Language id passed to runner comes from `found.course.languageId`. Includes a `<LoadingShim>` (pulsing happy Lumo) during the boot tick, a `<LessonNotFound>` fallback (sad Lumo + "Back to Learn") for missing/invalid lesson ids, and an animated `<OutOfHeartsOverlay>` modal that appears when `hearts === 0` with three options: "Refill hearts (30 💎)" (calls `spendGems(30)` then `refillHearts()` + success toast), "Practice to recover" (`setView("practice")`), "Quit" (`quitLesson()`). When `gems < 30` the refill button is replaced with a "Go to shop" sun-colored CTA (`setView("shop")`).
+   - **`LessonCompleteView`** — celebratory screen. `<Confetti active />` (aria-hidden) at the top; `Lumo expression="cheer"` floating in with a spring. Big `<h1>Lesson complete!</h1>` headline + subtitle. Conditional "PERFECT!" badge (gradient pill with Sparkles, spring-in at 0.3s delay) when `wrongCount === 0`. `<StarRow count={stars} size={36} />` with `stars = perfect ? 3 : wrongCount <= 1 ? 2 : 1` (mirrors the store formula). Three `<RewardCard>`s in a responsive `grid grid-cols-1 md:grid-cols-3`: XP earned (animated count-up, Zap icon), Accuracy (animated count-up + `%`, Target icon), Day streak (animated count-up, Flame icon, with a spring-in `+1` badge since completing always advances the streak by 1 day). Perfect-bonus callout (`+⌊xpEarned/3⌋ XP perfect bonus!`, derived by inverting the store's `xpEarned = rawXP × 1.5` formula). "Added to your stats" mini-list (3-column divided card: +XP / +1 day / +5 gems, with the gems number also count-up animated). Newly-unlocked achievements section: filters `ACHIEVEMENTS` to those with `achievementsProgress[id].unlockedAt > activeLesson.startedAt`, renders each as a spring-staggered card with emoji icon + title + description + sparkles. Three CTAs at the bottom: primary "Continue" (→ `setView("lesson", { lessonId: nextLesson.id })` if next lesson exists, else `setView("learn")`), secondary "Practice" (`setView("practice")`), ghost "Share" (`pushToast({ text: "Shared to your feed! 🎉", variant: "success" })`). Fallback `<NoLessonToComplete>` (thinking Lumo + "Back to Learn") when `activeLesson` is null.
+   - `RewardCard`, `StatItem`, `OutOfHeartsOverlay`, `LessonNotFound`, `NoLessonToComplete`, `LoadingShim` — small internal presentational components.
+3. **Animation**: framer-motion spring-in for Lumo, badges, headline, stars (stagger by index using `delay`), reward cards (spring with y-offset), perfect-bonus callout, achievement rows (staggered 0.12s each), and the `+1` streak badge. Count-up numbers use RAF + easeOutCubic.
+4. **Responsive / accessibility**: reward grid stacks 1-col on mobile, 3-col on `md:`; CTAs stack vertically with the secondary pair in a 2-col grid. Semantic `<section>`/`<h1>`/`<h2>` headings throughout, every button has a descriptive `aria-label` (e.g., `Continue to next lesson: <title>`, `Refill hearts for 30 gems`, `Quit lesson and return to learn`). Out-of-hearts modal uses `role="dialog"` + `aria-modal="true"` + `aria-labelledby`. `<Confetti>` is `aria-hidden="true"`. Reward-card decorative circle is `aria-hidden`. Star row carries an `aria-label` like `Earned 3 out of 3 stars`.
+5. **Lint & type check**: ran `bun run lint` (clean, zero output). Ran `bunx tsc --noEmit` — no errors in `lesson.tsx`. Pre-existing TS errors in `store.ts`, `examples/`, and `skills/` are out of scope for LESSON-1 (same set noted by PATH-1). Used the project's `["--btn-shadow" as any]` cast pattern for the chunky-shadow utility on cards/buttons, matching `Button3D`, `AppShell`, and `learn.tsx`.
+
+**Stage Summary:**
+
+`LessonView` and `LessonCompleteView` are complete and self-contained in `/home/z/my-project/src/components/views/lesson.tsx` (~570 lines). They consume the Zustand store and the `findLesson`/`ACHIEVEMENTS` data exactly as the rest of the app does, use the brand primitives (`Button3D`, `Lumo`, `ProgressBar`, `StarRow`) and `Confetti`/`ExerciseRunner` consistently, and produce a polished, animated, accessible lesson flow + celebration screen. No other files were modified. Recommended next step (out of scope for LESSON-1): wire the view switcher (likely `src/app/page.tsx` or a router component) to render `<LessonView />` when `view === "lesson"` and `<LessonCompleteView />` when `view === "lesson-complete"`. The `AppShell` already hides chrome for both these views (line 44), so they render full-screen as intended.

@@ -1,0 +1,1559 @@
+     1→/**
+     2→ * Lingoland content catalog.
+     3→ * 3 languages (Spanish, Japanese, French), each with multiple units and lessons.
+     4→ * All content is original — written specifically for Lingoland.
+     5→ *
+     6→ * The exercise engine consumes ExerciseSpec objects; lessons are lists of specs.
+     7→ */
+     8→
+     9→export type ExerciseType =
+    10→  | "multiple_choice"
+    11→  | "translation"
+    12→  | "word_order"
+    13→  | "fill_blank"
+    14→  | "matching"
+    15→  | "listening"
+    16→  | "speaking"
+    17→  | "image_select"
+    18→  | "dialogue"
+    19→  | "spell"
+    20→  | "true_false";
+    21→
+    22→export interface ExerciseSpec {
+    23→  id: string;
+    24→  type: ExerciseType;
+    25→  /** Translation direction: "to_target" (translate INTO target language) | "to_native" | "listen" | "see" */
+    26→  prompt: string;
+    27→  promptTranslation?: string;
+    28→  instruction?: string;
+    29→  /** For multiple_choice, image_select, true_false */
+    30→  options?: string[];
+    31→  optionTranslations?: string[];
+    32→  /** Index(es) of correct option(s) for MC/image/true_false */
+    33→  correctIndex?: number | number[];
+    34→  /** For word_order — tokens to arrange */
+    35→  tokens?: string[];
+    36→  tokensTranslation?: string;
+    37→  /** Correct token order (as joined string for comparison) */
+    38→  correctOrder?: string;
+    39→  /** For fill_blank — sentence with __BLANK__ */
+    40→  sentence?: string;
+    41→  blankAnswer?: string;
+    42→  /** For matching — pairs */
+    43→  pairs?: { left: string; right: string }[];
+    44→  /** For listening */
+    45→  audioText?: string;
+    46→  /** For speaking */
+    47→  targetPhrase?: string;
+    48→  /** Hint shown after wrong answer */
+    49→  hint?: string;
+    50→  /** Explanation shown after answering */
+    51→  explanation?: string;
+    52→  /** Image url for image_select (we use emoji proxy for offline) */
+    53→  images?: string[]; // emoji
+    54→  correctImageIndex?: number;
+    55→  /** Reward */
+    56→  xp?: number;
+    57→}
+    58→
+    59→export interface VocabItem {
+    60→  word: string;
+    61→  translation: string;
+    62→  pronunciation?: string;
+    63→  partOfSpeech?: string;
+    64→  example?: string;
+    65→  exampleTranslation?: string;
+    66→  difficulty?: number;
+    67→  emoji?: string;
+    68→}
+    69→
+    70→export interface LessonSpec {
+    71→  id: string;
+    72→  title: string;
+    73→  description: string;
+    74→  type: "lesson" | "story" | "practice" | "challenge" | "review" | "speaking";
+    75→  xp: number;
+    76→  vocab?: VocabItem[];
+    77→  exercises: ExerciseSpec[];
+    78→  isBonus?: boolean;
+    79→}
+    80→
+    81→export interface UnitSpec {
+    82→  id: string;
+    83→  title: string;
+    84→  subtitle: string;
+    85→  description: string;
+    86→  color: string;
+    87→  lessons: LessonSpec[];
+    88→}
+    89→
+    90→export interface CourseSpec {
+    91→  id: string;
+    92→  languageId: string;
+    93→  title: string;
+    94→  description: string;
+    95→  iconColor: string;
+    96→  units: UnitSpec[];
+    97→}
+    98→
+    99→export interface LanguageSpec {
+   100→  id: string;
+   101→  name: string;
+   102→  nativeName: string;
+   103→  flag: string; // emoji
+   104→  bcp47: string;
+   105→}
+   106→
+   107→export const LANGUAGES: LanguageSpec[] = [
+   108→  { id: "es", name: "Spanish", nativeName: "Español", flag: "🇪🇸", bcp47: "es-ES" },
+   109→  { id: "ja", name: "Japanese", nativeName: "日本語", flag: "🇯🇵", bcp47: "ja-JP" },
+   110→  { id: "fr", name: "French", nativeName: "Français", flag: "🇫🇷", bcp47: "fr-FR" },
+   111→];
+   112→
+   113→// ─────────────────────────────────────────────────────────────────
+   114→// SPANISH
+   115→// ─────────────────────────────────────────────────────────────────
+   116→const spanishUnit1: UnitSpec = {
+   117→  id: "es-u1",
+   118→  title: "Unit 1",
+   119→  subtitle: "Hola, ¿cómo estás?",
+   120→  description: "Greet people, say your name, and count to ten.",
+   121→  color: "#58cc8d",
+   122→  lessons: [
+   123→    {
+   124→      id: "es-u1-l1",
+   125→      title: "Greetings",
+   126→      description: "Say hello and goodbye in Spanish.",
+   127→      type: "lesson",
+   128→      xp: 10,
+   129→      vocab: [
+   130→        { word: "hola", translation: "hello", pronunciation: "OH-lah", emoji: "👋" },
+   131→        { word: "adiós", translation: "goodbye", pronunciation: "ah-DYOHS", emoji: "👋" },
+   132→        { word: "buenos días", translation: "good morning", pronunciation: "BWEH-nohs DEE-ahs", emoji: "🌅" },
+   133→        { word: "buenas noches", translation: "good night", pronunciation: "BWEH-nahs NOH-chehs", emoji: "🌙" },
+   134→      ],
+   135→      exercises: [
+   136→        {
+   137→          id: "e1",
+   138→          type: "multiple_choice",
+   139→          prompt: "How do you say 'hello' in Spanish?",
+   140→          instruction: "Choose the correct translation",
+   141→          options: ["hola", "adiós", "gracias", "por favor"],
+   142→          correctIndex: 0,
+   143→          explanation: "'Hola' is the standard greeting in Spanish, used any time of day.",
+   144→          xp: 2,
+   145→        },
+   146→        {
+   147→          id: "e2",
+   148→          type: "translation",
+   149→          prompt: "Translate this sentence",
+   150→          promptTranslation: "Good morning",
+   151→          instruction: "Translate to Spanish",
+   152→          tokens: ["buenos", "días", "noches", "buenas"],
+   153→          correctOrder: "buenos días",
+   154→          explanation: "'Buenos días' is used before noon. Afternoon uses 'buenas tardes'.",
+   155→          xp: 2,
+   156→        },
+   157→        {
+   158→          id: "e3",
+   159→          type: "image_select",
+   160→          prompt: "Which image means 'good night'?",
+   161→          instruction: "Tap the matching image",
+   162→          images: ["🌅", "🌙", "👋", "☀️"],
+   163→          correctImageIndex: 1,
+   164→          promptTranslation: "buenas noches",
+   165→          explanation: "'Buenas noches' (good night) is associated with the moon.",
+   166→          xp: 2,
+   167→        },
+   168→        {
+   169→          id: "e4",
+   170→          type: "matching",
+   171→          prompt: "Match the Spanish greetings to their meanings",
+   172→          instruction: "Tap a left item, then tap its match on the right",
+   173→          pairs: [
+   174→            { left: "hola", right: "hello" },
+   175→            { left: "adiós", right: "goodbye" },
+   176→            { left: "buenos días", right: "good morning" },
+   177→            { left: "buenas noches", right: "good night" },
+   178→          ],
+   179→          xp: 2,
+   180→        },
+   181→        {
+   182→          id: "e5",
+   183→          type: "listening",
+   184→          prompt: "Tap what you hear",
+   185→          instruction: "Listen and choose what was said",
+   186→          audioText: "hola",
+   187→          options: ["hola", "ola", "hola adiós", "buenos"],
+   188→          correctIndex: 0,
+   189→          explanation: "The Spanish 'h' is silent — 'hola' sounds like 'OH-lah'.",
+   190→          xp: 2,
+   191→        },
+   192→        {
+   193→          id: "e6",
+   194→          type: "speaking",
+   195→          prompt: "Say this phrase",
+   196→          instruction: "Speak the phrase aloud",
+   197→          targetPhrase: "buenos días",
+   198→          promptTranslation: "good morning",
+   199→          hint: "BWEH-nohs DEE-ahs",
+   200→          xp: 2,
+   201→        },
+   202→        {
+   203→          id: "e7",
+   204→          type: "fill_blank",
+   205→          prompt: "Complete the sentence",
+   206→          sentence: "¡___ días! ¿Cómo estás?",
+   207→          blankAnswer: "buenos",
+   208→          instruction: "Type the missing word",
+   209→          hint: "Used before noon",
+   210→          explanation: "Before noon we say 'buenos días'.",
+   211→          xp: 2,
+   212→        },
+   213→        {
+   214→          id: "e8",
+   215→          type: "word_order",
+   216→          prompt: "Arrange the words",
+   217→          instruction: "Tap the words in the correct order",
+   218→          tokens: ["noches", "buenas", "—", "¡", "!"],
+   219→          correctOrder: "¡buenas noches!",
+   220→          tokensTranslation: "good night",
+   221→          xp: 2,
+   222→        },
+   223→      ],
+   224→    },
+   225→    {
+   226→      id: "es-u1-l2",
+   227→      title: "Introductions",
+   228→      description: "Tell people your name and ask theirs.",
+   229→      type: "lesson",
+   230→      xp: 10,
+   231→      vocab: [
+   232→        { word: "me llamo", translation: "my name is", pronunciation: "meh YAH-moh", emoji: "🪪" },
+   233→        { word: "¿cómo te llamas?", translation: "what's your name?", pronunciation: "KOH-moh teh YAH-mahs", emoji: "❓" },
+   234→        { word: "mucho gusto", translation: "nice to meet you", pronunciation: "MOO-choh GOO-stoh", emoji: "🤝" },
+   235→        { word: "soy de", translation: "I'm from", pronunciation: "soy deh", emoji: "📍" },
+   236→      ],
+   237→      exercises: [
+   238→        {
+   239→          id: "e1",
+   240→          type: "multiple_choice",
+   241→          prompt: "How do you say 'my name is' in Spanish?",
+   242→          instruction: "Choose the correct translation",
+   243→          options: ["me llamo", "te llamas", "mucho gusto", "adiós"],
+   244→          correctIndex: 0,
+   245→          explanation: "'Me llamo' (literally: I call myself) is how Spanish speakers introduce themselves.",
+   246→          xp: 2,
+   247→        },
+   248→        {
+   249→          id: "e2",
+   250→          type: "translation",
+   251→          prompt: "Translate this sentence",
+   252→          promptTranslation: "Nice to meet you",
+   253→          instruction: "Translate to Spanish",
+   254→          tokens: ["mucho", "gusto", "muy", "bueno"],
+   255→          correctOrder: "mucho gusto",
+   256→          xp: 2,
+   257→        },
+   258→        {
+   259→          id: "e3",
+   260→          type: "dialogue",
+   261→          prompt: "Lumo says: ¿Cómo te llamas?",
+   262→          promptTranslation: "What's your name?",
+   263→          instruction: "Choose the most natural reply",
+   264→          options: ["Me llamo Ana", "Buenos días", "Adiós", "Gracias"],
+   265→          correctIndex: 0,
+   266→          explanation: "The natural reply is to state your name with 'Me llamo ___'.",
+   267→          xp: 2,
+   268→        },
+   269→        {
+   270→          id: "e4",
+   271→          type: "fill_blank",
+   272→          prompt: "Complete: I'm from Spain",
+   273→          sentence: "Soy ___ España.",
+   274→          blankAnswer: "de",
+   275→          instruction: "Type the missing word",
+   276→          hint: "Preposition meaning 'from' or 'of'",
+   277→          xp: 2,
+   278→        },
+   279→        {
+   280→          id: "e5",
+   281→          type: "matching",
+   282→          prompt: "Match the phrases",
+   283→          instruction: "Pair Spanish with English",
+   284→          pairs: [
+   285→            { left: "me llamo", right: "my name is" },
+   286→            { left: "¿cómo te llamas?", right: "what's your name?" },
+   287→            { left: "mucho gusto", right: "nice to meet you" },
+   288→            { left: "soy de", right: "I'm from" },
+   289→          ],
+   290→          xp: 2,
+   291→        },
+   292→        {
+   293→          id: "e6",
+   294→          type: "speaking",
+   295→          prompt: "Say your introduction",
+   296→          targetPhrase: "me llamo",
+   297→          promptTranslation: "my name is",
+   298→          hint: "meh YAH-moh",
+   299→          xp: 2,
+   300→        },
+   301→        {
+   302→          id: "e7",
+   303→          type: "word_order",
+   304→          prompt: "Arrange the words",
+   305→          instruction: "Form the question",
+   306→          tokens: ["llamas", "te", "cómo", "¿", "?"],
+   307→          correctOrder: "¿cómo te llamas?",
+   308→          tokensTranslation: "what's your name?",
+   309→          xp: 2,
+   310→        },
+   311→      ],
+   312→    },
+   313→    {
+   314→      id: "es-u1-l3",
+   315→      title: "Numbers 1–10",
+   316→      description: "Count to ten in Spanish.",
+   317→      type: "lesson",
+   318→      xp: 10,
+   319→      vocab: [
+   320→        { word: "uno", translation: "one", emoji: "1️⃣" },
+   321→        { word: "dos", translation: "two", emoji: "2️⃣" },
+   322→        { word: "tres", translation: "three", emoji: "3️⃣" },
+   323→        { word: "cuatro", translation: "four", emoji: "4️⃣" },
+   324→        { word: "cinco", translation: "five", emoji: "5️⃣" },
+   325→        { word: "diez", translation: "ten", emoji: "🔟" },
+   326→      ],
+   327→      exercises: [
+   328→        {
+   329→          id: "e1",
+   330→          type: "image_select",
+   331→          prompt: "Which image represents 'cinco'?",
+   332→          instruction: "five",
+   333→          images: ["3️⃣", "5️⃣", "10️⃣", "1️⃣"],
+   334→          correctImageIndex: 1,
+   335→          promptTranslation: "cinco",
+   336→          xp: 2,
+   337→        },
+   338→        {
+   339→          id: "e2",
+   340→          type: "multiple_choice",
+   341→          prompt: "What is 'diez' in English?",
+   342→          options: ["five", "ten", "two", "three"],
+   343→          correctIndex: 1,
+   344→          xp: 2,
+   345→        },
+   346→        {
+   347→          id: "e3",
+   348→          type: "fill_blank",
+   349→          prompt: "Complete: 4 = ___",
+   350→          sentence: "cuatro = ___",
+   351→          blankAnswer: "four",
+   352→          instruction: "Type the English translation",
+   353→          xp: 2,
+   354→        },
+   355→        {
+   356→          id: "e4",
+   357→          type: "matching",
+   358→          prompt: "Match the numbers",
+   359→          pairs: [
+   360→            { left: "uno", right: "1" },
+   361→            { left: "dos", right: "2" },
+   362→            { left: "tres", right: "3" },
+   363→            { left: "diez", right: "10" },
+   364→          ],
+   365→          xp: 2,
+   366→        },
+   367→        {
+   368→          id: "e5",
+   369→          type: "translation",
+   370→          prompt: "Translate",
+   371→          promptTranslation: "five",
+   372→          tokens: ["cinco", "cuatro", "diez", "seis"],
+   373→          correctOrder: "cinco",
+   374→          xp: 2,
+   375→        },
+   376→        {
+   377→          id: "e6",
+   378→          type: "listening",
+   379→          prompt: "Tap what you hear",
+   380→          audioText: "tres",
+   381→          options: ["tres", "diez", "dos", "seis"],
+   382→          correctIndex: 0,
+   383→          xp: 2,
+   384→        },
+   385→      ],
+   386→    },
+   387→    {
+   388→      id: "es-u1-l4",
+   389→      title: "Story: First Day in Madrid",
+   390→      description: "Use greetings in context.",
+   391→      type: "story",
+   392→      xp: 15,
+   393→      exercises: [
+   394→        {
+   395→          id: "e1",
+   396→          type: "dialogue",
+   397→          prompt: "A stranger approaches: ¡Hola! ¿Cómo te llamas?",
+   398→          promptTranslation: "Hi! What's your name?",
+   399→          instruction: "How would you reply?",
+   400→          options: ["Me llamo María", "Adiós", "Buen provecho", "Cuánto cuesta"],
+   401→          correctIndex: 0,
+   402→          explanation: "Introduce yourself with 'Me llamo ___'.",
+   403→          xp: 5,
+   404→        },
+   405→        {
+   406→          id: "e2",
+   407→          type: "multiple_choice",
+   408→          prompt: "In the story, the barista says 'buenos días'. What time of day is it?",
+   409→          options: ["morning", "afternoon", "evening", "night"],
+   410→          correctIndex: 0,
+   411→          explanation: "'Buenos días' is used in the morning.",
+   412→          xp: 5,
+   413→        },
+   414→        {
+   415→          id: "e3",
+   416→          type: "translation",
+   417→          prompt: "Translate",
+   418→          promptTranslation: "Nice to meet you too",
+   419→          tokens: ["igualmente", "mucho", "gusto", "también"],
+   420→          correctOrder: "igualmente",
+   421→          explanation: "'Igualmente' means 'likewise' or 'you too'.",
+   422→          xp: 5,
+   423→        },
+   424→      ],
+   425→    },
+   426→    {
+   427→      id: "es-u1-l5",
+   428→      title: "Review",
+   429→      description: "Refresh everything from Unit 1.",
+   430→      type: "review",
+   431→      xp: 12,
+   432→      exercises: [
+   433→        {
+   434→          id: "e1",
+   435→          type: "matching",
+   436→          prompt: "Match these Unit 1 phrases",
+   437→          pairs: [
+   438→            { left: "hola", right: "hello" },
+   439→            { left: "adiós", right: "goodbye" },
+   440→            { left: "me llamo", right: "my name is" },
+   441→            { left: "cinco", right: "five" },
+   442→          ],
+   443→          xp: 3,
+   444→        },
+   445→        {
+   446→          id: "e2",
+   447→          type: "translation",
+   448→          prompt: "Translate",
+   449→          promptTranslation: "good night",
+   450→          tokens: ["buenas", "noches", "días", "buenos"],
+   451→          correctOrder: "buenas noches",
+   452→          xp: 3,
+   453→        },
+   454→        {
+   455→          id: "e3",
+   456→          type: "fill_blank",
+   457→          prompt: "Complete: My name ___ Ana.",
+   458→          sentence: "Me ___ Ana.",
+   459→          blankAnswer: "llamo",
+   460→          hint: "From the verb 'llamarse'",
+   461→          xp: 3,
+   462→        },
+   463→        {
+   464→          id: "e4",
+   465→          type: "listening",
+   466→          prompt: "Tap what you hear",
+   467→          audioText: "adiós",
+   468→          options: ["adiós", "hola", "buenos", "noches"],
+   469→          correctIndex: 0,
+   470→          xp: 3,
+   471→        },
+   472→      ],
+   473→    },
+   474→  ],
+   475→};
+   476→
+   477→const spanishUnit2: UnitSpec = {
+   478→  id: "es-u2",
+   479→  title: "Unit 2",
+   480→  subtitle: "Family & Friends",
+   481→  description: "Talk about your family and closest people.",
+   482→  color: "#4d96ff",
+   483→  lessons: [
+   484→    {
+   485→      id: "es-u2-l1",
+   486→      title: "Family members",
+   487→      description: "Mother, father, sister, brother.",
+   488→      type: "lesson",
+   489→      xp: 10,
+   490→      vocab: [
+   491→        { word: "madre", translation: "mother", emoji: "👩" },
+   492→        { word: "padre", translation: "father", emoji: "👨" },
+   493→        { word: "hermana", translation: "sister", emoji: "👧" },
+   494→        { word: "hermano", translation: "brother", emoji: "👦" },
+   495→        { word: "familia", translation: "family", emoji: "👨‍👩‍👧‍👦" },
+   496→      ],
+   497→      exercises: [
+   498→        {
+   499→          id: "e1",
+   500→          type: "image_select",
+   501→          prompt: "Which image means 'madre'?",
+   502→          images: ["👨", "👩", "👧", "👦"],
+   503→          correctImageIndex: 1,
+   504→          promptTranslation: "madre",
+   505→          xp: 2,
+   506→        },
+   507→        {
+   508→          id: "e2",
+   509→          type: "multiple_choice",
+   510→          prompt: "How do you say 'brother'?",
+   511→          options: ["hermana", "hermano", "padre", "madre"],
+   512→          correctIndex: 1,
+   513→          xp: 2,
+   514→        },
+   515→        {
+   516→          id: "e3",
+   517→          type: "translation",
+   518→          prompt: "Translate",
+   519→          promptTranslation: "my family",
+   520→          tokens: ["mi", "familia", "familias", "mio"],
+   521→          correctOrder: "mi familia",
+   522→          xp: 2,
+   523→        },
+   524→        {
+   525→          id: "e4",
+   526→          type: "fill_blank",
+   527→          prompt: "Complete: My sister is funny.",
+   528→          sentence: "Mi ___ es divertida.",
+   529→          blankAnswer: "hermana",
+   530→          hint: "Female sibling",
+   531→          xp: 2,
+   532→        },
+   533→        {
+   534→          id: "e5",
+   535→          type: "matching",
+   536→          prompt: "Match",
+   537→          pairs: [
+   538→            { left: "madre", right: "mother" },
+   539→            { left: "padre", right: "father" },
+   540→            { left: "hermana", right: "sister" },
+   541→            { left: "hermano", right: "brother" },
+   542→          ],
+   543→          xp: 2,
+   544→        },
+   545→        {
+   546→          id: "e6",
+   547→          type: "listening",
+   548→          prompt: "Tap what you hear",
+   549→          audioText: "familia",
+   550→          options: ["familia", "padre", "madre", "amigo"],
+   551→          correctIndex: 0,
+   552→          xp: 2,
+   553→        },
+   554→      ],
+   555→    },
+   556→    {
+   557→      id: "es-u2-l2",
+   558→      title: "Possessives",
+   559→      description: "mi, tu, su — my, your, their.",
+   560→      type: "lesson",
+   561→      xp: 10,
+   562→      exercises: [
+   563→        {
+   564→          id: "e1",
+   565→          type: "translation",
+   566→          prompt: "Translate",
+   567→          promptTranslation: "my mother",
+   568→          tokens: ["mi", "madre", "tu", "padre"],
+   569→          correctOrder: "mi madre",
+   570→          xp: 2,
+   571→        },
+   572→        {
+   573→          id: "e2",
+   574→          type: "multiple_choice",
+   575→          prompt: "Which means 'your brother'?",
+   576→          options: ["tu hermano", "mi hermano", "su hermana", "el hermano"],
+   577→          correctIndex: 0,
+   578→          explanation: "'tu' is the informal 'your'.",
+   579→          xp: 2,
+   580→        },
+   581→        {
+   582→          id: "e3",
+   583→          type: "fill_blank",
+   584→          prompt: "Complete: ___ father is tall.",
+   585→          sentence: "___ padre es alto.",
+   586→          blankAnswer: "mi",
+   587→          instruction: "Type the possessive",
+   588→          xp: 2,
+   589→        },
+   590→        {
+   591→          id: "e4",
+   592→          type: "matching",
+   593→          prompt: "Match",
+   594→          pairs: [
+   595→            { left: "mi", right: "my" },
+   596→            { left: "tu", right: "your" },
+   597→            { left: "su", right: "his/her/their" },
+   598→            { left: "nuestro", right: "our" },
+   599→          ],
+   600→          xp: 2,
+   601→        },
+   602→        {
+   603→          id: "e5",
+   604→          type: "speaking",
+   605→          prompt: "Say this",
+   606→          targetPhrase: "mi familia",
+   607→          promptTranslation: "my family",
+   608→          xp: 2,
+   609→        },
+   610→      ],
+   611→    },
+   612→    {
+   613→      id: "es-u2-l3",
+   614→      title: "Challenge: Family Quiz",
+   615→      description: "Test your family vocabulary.",
+   616→      type: "challenge",
+   617→      xp: 20,
+   618→      exercises: [
+   619→        {
+   620→          id: "e1",
+   621→          type: "true_false",
+   622→          prompt: "'Hermana' means 'brother'.",
+   623→          options: ["True", "False"],
+   624→          correctIndex: 1,
+   625→          explanation: "'Hermana' is sister; 'hermano' is brother.",
+   626→          xp: 5,
+   627→        },
+   628→        {
+   629→          id: "e2",
+   630→          type: "translation",
+   631→          prompt: "Translate fast!",
+   632→          promptTranslation: "my father",
+   633→          tokens: ["mi", "padre", "madre", "tu"],
+   634→          correctOrder: "mi padre",
+   635→          xp: 5,
+   636→        },
+   637→        {
+   638→          id: "e3",
+   639→          type: "image_select",
+   640→          prompt: "Which is 'familia'?",
+   641→          images: ["👩", "👨", "👨‍👩‍👧‍👦", "👧"],
+   642→          correctImageIndex: 2,
+   643→          xp: 5,
+   644→        },
+   645→        {
+   646→          id: "e4",
+   647→          type: "fill_blank",
+   648→          prompt: "Complete: my sister",
+   649→          sentence: "mi ___",
+   650→          blankAnswer: "hermana",
+   651→          xp: 5,
+   652→        },
+   653→      ],
+   654→    },
+   655→  ],
+   656→};
+   657→
+   658→// ─────────────────────────────────────────────────────────────────
+   659→// JAPANESE
+   660→// ─────────────────────────────────────────────────────────────────
+   661→const japaneseUnit1: UnitSpec = {
+   662→  id: "ja-u1",
+   663→  title: "Unit 1",
+   664→  subtitle: "はじめまして — Nice to meet you",
+   665→  description: "Greetings, bowing, and self-introductions in Japanese.",
+   666→  color: "#ff6b6b",
+   667→  lessons: [
+   668→    {
+   669→      id: "ja-u1-l1",
+   670→      title: "Greetings",
+   671→      description: "konnichiwa, sayounara, arigatou.",
+   672→      type: "lesson",
+   673→      xp: 10,
+   674→      vocab: [
+   675→        { word: "こんにちは", translation: "hello (daytime)", pronunciation: "kon-nee-chee-wah", emoji: "👋" },
+   676→        { word: "さようなら", translation: "goodbye", pronunciation: "sa-yoh-nah-rah", emoji: "👋" },
+   677→        { word: "ありがとう", translation: "thank you", pronunciation: "ah-ree-gah-toh", emoji: "🙏" },
+   678→        { word: "すみません", translation: "excuse me / sorry", pronunciation: "soo-mee-mah-sen", emoji: "🙇" },
+   679→        { word: "おはよう", translation: "good morning (casual)", pronunciation: "oh-hah-yoh", emoji: "🌅" },
+   680→      ],
+   681→      exercises: [
+   682→        {
+   683→          id: "e1",
+   684→          type: "multiple_choice",
+   685→          prompt: "How do you say 'thank you' in Japanese?",
+   686→          options: ["ありがとう", "こんにちは", "さようなら", "すみません"],
+   687→          correctIndex: 0,
+   688→          explanation: "'Arigatou' is the casual 'thank you'; 'arigatou gozaimasu' is polite.",
+   689→          xp: 2,
+   690→        },
+   691→        {
+   692→          id: "e2",
+   693→          type: "image_select",
+   694→          prompt: "Which image matches 'ありがとう'?",
+   695→          images: ["👋", "🙏", "🌅", "🙇"],
+   696→          correctImageIndex: 1,
+   697→          promptTranslation: "thank you",
+   698→          xp: 2,
+   699→        },
+   700→        {
+   701→          id: "e3",
+   702→          type: "translation",
+   703→          prompt: "Translate",
+   704→          promptTranslation: "goodbye",
+   705→          tokens: ["さようなら", "こんにちは", "ありがとう", "すみません"],
+   706→          correctOrder: "さようなら",
+   707→          xp: 2,
+   708→        },
+   709→        {
+   710→          id: "e4",
+   711→          type: "matching",
+   712→          prompt: "Match Japanese to English",
+   713→          pairs: [
+   714→            { left: "こんにちは", right: "hello" },
+   715→            { left: "さようなら", right: "goodbye" },
+   716→            { left: "ありがとう", right: "thank you" },
+   717→            { left: "おはよう", right: "good morning" },
+   718→          ],
+   719→          xp: 2,
+   720→        },
+   721→        {
+   722→          id: "e5",
+   723→          type: "listening",
+   724→          prompt: "Tap what you hear",
+   725→          audioText: "こんにちは",
+   726→          options: ["こんにちは", "さようなら", "ありがとう", "すみません"],
+   727→          correctIndex: 0,
+   728→          xp: 2,
+   729→        },
+   730→        {
+   731→          id: "e6",
+   732→          type: "speaking",
+   733→          prompt: "Say this",
+   734→          targetPhrase: "ありがとう",
+   735→          promptTranslation: "thank you",
+   736→          hint: "ah-ree-gah-toh",
+   737→          xp: 2,
+   738→        },
+   739→        {
+   740→          id: "e7",
+   741→          type: "fill_blank",
+   742→          prompt: "Complete: ___ gozaimasu (polite thank you)",
+   743→          sentence: "___ gozaimasu",
+   744→          blankAnswer: "ありがとう",
+   745→          xp: 2,
+   746→        },
+   747→      ],
+   748→    },
+   749→    {
+   750→      id: "ja-u1-l2",
+   751→      title: "Self-introduction",
+   752→      description: "Introduce yourself politely.",
+   753→      type: "lesson",
+   754→      xp: 10,
+   755→      vocab: [
+   756→        { word: "はじめまして", translation: "nice to meet you", pronunciation: "hah-jee-meh-mahs-teh", emoji: "🤝" },
+   757→        { word: "〜です", translation: "I am ~", pronunciation: "dehs", emoji: "➡️" },
+   758→        { word: "名前", translation: "name", pronunciation: "nah-meh", emoji: "🪪" },
+   759→        { word: "日本人", translation: "Japanese person", pronunciation: "nee-hon-jin", emoji: "🇯🇵" },
+   760→      ],
+   761→      exercises: [
+   762→        {
+   763→          id: "e1",
+   764→          type: "dialogue",
+   765→          prompt: "Lumo says: はじめまして!",
+   766→          promptTranslation: "Nice to meet you!",
+   767→          instruction: "Choose a natural reply",
+   768→          options: ["はじめまして", "さようなら", "ありがとう", "すみません"],
+   769→          correctIndex: 0,
+   770→          xp: 2,
+   771→        },
+   772→        {
+   773→          id: "e2",
+   774→          type: "translation",
+   775→          prompt: "Translate",
+   776→          promptTranslation: "I am Japanese.",
+   777→          tokens: ["日本人", "です", "こんにちは", "名前"],
+   778→          correctOrder: "日本人です",
+   779→          xp: 2,
+   780→        },
+   781→        {
+   782→          id: "e3",
+   783→          type: "matching",
+   784→          prompt: "Match",
+   785→          pairs: [
+   786→            { left: "はじめまして", right: "nice to meet you" },
+   787→            { left: "名前", right: "name" },
+   788→            { left: "日本人", right: "Japanese person" },
+   789→            { left: "です", right: "am/is/are" },
+   790→          ],
+   791→          xp: 2,
+   792→        },
+   793→        {
+   794→          id: "e4",
+   795→          type: "fill_blank",
+   796→          prompt: "Complete: I ___ Maria.",
+   797→          sentence: "マリア___。",
+   798→          blankAnswer: "です",
+   799→          hint: "Polite copula",
+   800→          xp: 2,
+   801→        },
+   802→        {
+   803→          id: "e5",
+   804→          type: "speaking",
+   805→          prompt: "Say this",
+   806→          targetPhrase: "はじめまして",
+   807→          promptTranslation: "nice to meet you",
+   808→          hint: "hah-jee-meh-mahs-teh",
+   809→          xp: 2,
+   810→        },
+   811→      ],
+   812→    },
+   813→    {
+   814→      id: "ja-u1-l3",
+   815→      title: "Numbers & counting",
+   816→      description: "ichi, ni, san — 1, 2, 3.",
+   817→      type: "lesson",
+   818→      xp: 10,
+   819→      vocab: [
+   820→        { word: "一", translation: "one", pronunciation: "ee-chee", emoji: "1️⃣" },
+   821→        { word: "二", translation: "two", pronunciation: "nee", emoji: "2️⃣" },
+   822→        { word: "三", translation: "three", pronunciation: "sahn", emoji: "3️⃣" },
+   823→        { word: "四", translation: "four", pronunciation: "shee / yon", emoji: "4️⃣" },
+   824→        { word: "五", translation: "five", pronunciation: "go", emoji: "5️⃣" },
+   825→      ],
+   826→      exercises: [
+   827→        {
+   828→          id: "e1",
+   829→          type: "image_select",
+   830→          prompt: "Which means '三'?",
+   831→          images: ["1️⃣", "2️⃣", "3️⃣", "5️⃣"],
+   832→          correctImageIndex: 2,
+   833→          promptTranslation: "three",
+   834→          xp: 2,
+   835→        },
+   836→        {
+   837→          id: "e2",
+   838→          type: "matching",
+   839→          prompt: "Match the numbers",
+   840→          pairs: [
+   841→            { left: "一", right: "1" },
+   842→            { left: "二", right: "2" },
+   843→            { left: "三", right: "3" },
+   844→            { left: "五", right: "5" },
+   845→          ],
+   846→          xp: 2,
+   847→        },
+   848→        {
+   849→          id: "e3",
+   850→          type: "multiple_choice",
+   851→          prompt: "How do you say 'four'?",
+   852→          options: ["四", "三", "二", "一"],
+   853→          correctIndex: 0,
+   854→          explanation: "'四' is read 'yon' or 'shi' depending on context.",
+   855→          xp: 2,
+   856→        },
+   857→        {
+   858→          id: "e4",
+   859→          type: "translation",
+   860→          prompt: "Translate",
+   861→          promptTranslation: "five",
+   862→          tokens: ["五", "四", "三", "一"],
+   863→          correctOrder: "五",
+   864→          xp: 2,
+   865→        },
+   866→        {
+   867→          id: "e5",
+   868→          type: "listening",
+   869→          prompt: "Tap what you hear",
+   870→          audioText: "二",
+   871→          options: ["二", "三", "一", "五"],
+   872→          correctIndex: 0,
+   873→          xp: 2,
+   874→        },
+   875→      ],
+   876→    },
+   877→    {
+   878→      id: "ja-u1-l4",
+   879→      title: "Story: Tokyo Coffee Shop",
+   880→      description: "Order coffee in Japanese.",
+   881→      type: "story",
+   882→      xp: 15,
+   883→      exercises: [
+   884→        {
+   885→          id: "e1",
+   886→          type: "dialogue",
+   887→          prompt: "Barista: いらっしゃいませ! (Welcome!)",
+   888→          promptTranslation: "Welcome to our shop!",
+   889→          instruction: "Choose the most polite reply",
+   890→          options: ["こんにちは", "すみません、コーヒーをください", "さようなら", "ありがとう"],
+   891→          correctIndex: 1,
+   892→          explanation: "'すみません、コーヒーをください' = 'Excuse me, coffee please.'",
+   893→          xp: 5,
+   894→        },
+   895→        {
+   896→          id: "e2",
+   897→          type: "translation",
+   898→          prompt: "Translate",
+   899→          promptTranslation: "thank you very much",
+   900→          tokens: ["ありがとう", "ございます", "さようなら", "すみません"],
+   901→          correctOrder: "ありがとうございます",
+   902→          explanation: "Polite form: arigatou gozaimasu.",
+   903→          xp: 5,
+   904→        },
+   905→        {
+   906→          id: "e3",
+   907→          type: "multiple_choice",
+   908→          prompt: "You receive your coffee. What do you say?",
+   909→          options: ["ありがとう", "さようなら", "すみません", "こんにちは"],
+   910→          correctIndex: 0,
+   911→          xp: 5,
+   912→        },
+   913→      ],
+   914→    },
+   915→    {
+   916→      id: "ja-u1-l5",
+   917→      title: "Review",
+   918→      description: "Solidify Unit 1.",
+   919→      type: "review",
+   920→      xp: 12,
+   921→      exercises: [
+   922→        {
+   923→          id: "e1",
+   924→          type: "matching",
+   925→          prompt: "Match",
+   926→          pairs: [
+   927→            { left: "こんにちは", right: "hello" },
+   928→            { left: "ありがとう", right: "thank you" },
+   929→            { left: "はじめまして", right: "nice to meet you" },
+   930→            { left: "三", right: "3" },
+   931→          ],
+   932→          xp: 3,
+   933→        },
+   934→        {
+   935→          id: "e2",
+   936→          type: "translation",
+   937→          prompt: "Translate",
+   938→          promptTranslation: "goodbye",
+   939→          tokens: ["さようなら", "こんにちは", "ありがとう", "すみません"],
+   940→          correctOrder: "さようなら",
+   941→          xp: 3,
+   942→        },
+   943→        {
+   944→          id: "e3",
+   945→          type: "fill_blank",
+   946→          prompt: "Polite 'thank you':",
+   947→          sentence: "ありがとう___",
+   948→          blankAnswer: "ございます",
+   949→          xp: 3,
+   950→        },
+   951→        {
+   952→          id: "e4",
+   953→          type: "listening",
+   954→          prompt: "Tap what you hear",
+   955→          audioText: "ありがとう",
+   956→          options: ["ありがとう", "さようなら", "すみません", "こんにちは"],
+   957→          correctIndex: 0,
+   958→          xp: 3,
+   959→        },
+   960→      ],
+   961→    },
+   962→  ],
+   963→};
+   964→
+   965→const japaneseUnit2: UnitSpec = {
+   966→  id: "ja-u2",
+   967→  title: "Unit 2",
+   968→  subtitle: "食べもの — Food",
+   969→  description: "Talk about food, drinks and ordering.",
+   970→  color: "#ffc93c",
+   971→  lessons: [
+   972→    {
+   973→      id: "ja-u2-l1",
+   974→      title: "Common foods",
+   975→      description: "rice, water, tea, fish.",
+   976→      type: "lesson",
+   977→      xp: 10,
+   978→      vocab: [
+   979→        { word: "ご飯", translation: "rice / meal", pronunciation: "goh-han", emoji: "🍚" },
+   980→        { word: "水", translation: "water", pronunciation: "meez", emoji: "💧" },
+   981→        { word: "お茶", translation: "tea", pronunciation: "oh-chah", emoji: "🍵" },
+   982→        { word: "魚", translation: "fish", pronunciation: "sah-kah-nah", emoji: "🐟" },
+   983→        { word: "肉", translation: "meat", pronunciation: "nee-koo", emoji: "🥩" },
+   984→      ],
+   985→      exercises: [
+   986→        {
+   987→          id: "e1",
+   988→          type: "image_select",
+   989→          prompt: "Which means 'お茶'?",
+   990→          images: ["🍚", "💧", "🍵", "🐟"],
+   991→          correctImageIndex: 2,
+   992→          promptTranslation: "tea",
+   993→          xp: 2,
+   994→        },
+   995→        {
+   996→          id: "e2",
+   997→          type: "multiple_choice",
+   998→          prompt: "How do you say 'water'?",
+   999→          options: ["水", "お茶", "ご飯", "肉"],
+  1000→          correctIndex: 0,
+  1001→          xp: 2,
+  1002→        },
+  1003→        {
+  1004→          id: "e3",
+  1005→          type: "matching",
+  1006→          prompt: "Match",
+  1007→          pairs: [
+  1008→            { left: "ご飯", right: "rice" },
+  1009→            { left: "水", right: "water" },
+  1010→            { left: "お茶", right: "tea" },
+  1011→            { left: "魚", right: "fish" },
+  1012→          ],
+  1013→          xp: 2,
+  1014→        },
+  1015→        {
+  1016→          id: "e4",
+  1017→          type: "translation",
+  1018→          prompt: "Translate",
+  1019→          promptTranslation: "fish, please",
+  1020→          tokens: ["魚", "を", "ください", "ご飯"],
+  1021→          correctOrder: "魚をください",
+  1022→          xp: 2,
+  1023→        },
+  1024→        {
+  1025→          id: "e5",
+  1026→          type: "fill_blank",
+  1027→          prompt: "Complete: tea, please",
+  1028→          sentence: "お茶___ください。",
+  1029→          blankAnswer: "を",
+  1030→          hint: "Object marker",
+  1031→          xp: 2,
+  1032→        },
+  1033→        {
+  1034→          id: "e6",
+  1035→          type: "listening",
+  1036→          prompt: "Tap what you hear",
+  1037→          audioText: "ご飯",
+  1038→          options: ["ご飯", "水", "お茶", "肉"],
+  1039→          correctIndex: 0,
+  1040→          xp: 2,
+  1041→        },
+  1042→      ],
+  1043→    },
+  1044→    {
+  1045→      id: "ja-u2-l2",
+  1046→      title: "Ordering at a restaurant",
+  1047→      description: "Phrase patterns for ordering.",
+  1048→      type: "lesson",
+  1049→      xp: 10,
+  1050→      exercises: [
+  1051→        {
+  1052→          id: "e1",
+  1053→          type: "dialogue",
+  1054→          prompt: "Waiter: ご注文は? (Your order?)",
+  1055→          promptTranslation: "What would you like?",
+  1056→          instruction: "Choose the most natural order",
+  1057→          options: ["お茶をください", "こんにちは", "さようなら", "ありがとう"],
+  1058→          correctIndex: 0,
+  1059→          xp: 2,
+  1060→        },
+  1061→        {
+  1062→          id: "e2",
+  1063→          type: "translation",
+  1064→          prompt: "Translate",
+  1065→          promptTranslation: "I'll have water, please",
+  1066→          tokens: ["水", "を", "ください", "お茶"],
+  1067→          correctOrder: "水をください",
+  1068→          xp: 2,
+  1069→        },
+  1070→        {
+  1071→          id: "e3",
+  1072→          type: "word_order",
+  1073→          prompt: "Form the request",
+  1074→          tokens: ["魚", "を", "ください"],
+  1075→          correctOrder: "魚をください",
+  1076→          tokensTranslation: "fish, please",
+  1077→          xp: 2,
+  1078→        },
+  1079→        {
+  1080→          id: "e4",
+  1081→          type: "speaking",
+  1082→          prompt: "Say this",
+  1083→          targetPhrase: "お茶をください",
+  1084→          promptTranslation: "tea, please",
+  1085→          hint: "oh-chah oh koo-dah-sai",
+  1086→          xp: 2,
+  1087→        },
+  1088→        {
+  1089→          id: "e5",
+  1090→          type: "fill_blank",
+  1091→          prompt: "Complete: rice, please",
+  1092→          sentence: "ご飯___ください。",
+  1093→          blankAnswer: "を",
+  1094→          xp: 2,
+  1095→        },
+  1096→      ],
+  1097→    },
+  1098→    {
+  1099→      id: "ja-u2-l3",
+  1100→      title: "Challenge: Restaurant Quiz",
+  1101→      description: "Test your food vocab.",
+  1102→      type: "challenge",
+  1103→      xp: 20,
+  1104→      exercises: [
+  1105→        {
+  1106→          id: "e1",
+  1107→          type: "true_false",
+  1108→          prompt: "'水' means 'tea'.",
+  1109→          options: ["True", "False"],
+  1110→          correctIndex: 1,
+  1111→          explanation: "'水' is water; 'お茶' is tea.",
+  1112→          xp: 5,
+  1113→        },
+  1114→        {
+  1115→          id: "e2",
+  1116→          type: "image_select",
+  1117→          prompt: "Which is '魚'?",
+  1118→          images: ["🍚", "💧", "🍵", "🐟"],
+  1119→          correctImageIndex: 3,
+  1120→          xp: 5,
+  1121→        },
+  1122→        {
+  1123→          id: "e3",
+  1124→          type: "translation",
+  1125→          prompt: "Translate",
+  1126→          promptTranslation: "tea, please",
+  1127→          tokens: ["お茶", "を", "ください", "ご飯"],
+  1128→          correctOrder: "お茶をください",
+  1129→          xp: 5,
+  1130→        },
+  1131→        {
+  1132→          id: "e4",
+  1133→          type: "fill_blank",
+  1134→          prompt: "Complete: water",
+  1135→          sentence: "___",
+  1136→          blankAnswer: "水",
+  1137→          xp: 5,
+  1138→        },
+  1139→      ],
+  1140→    },
+  1141→  ],
+  1142→};
+  1143→
+  1144→// ─────────────────────────────────────────────────────────────────
+  1145→// FRENCH
+  1146→// ─────────────────────────────────────────────────────────────────
+  1147→const frenchUnit1: UnitSpec = {
+  1148→  id: "fr-u1",
+  1149→  title: "Unit 1",
+  1150→  subtitle: "Bonjour !",
+  1151→  description: "Greetings, polite phrases, and basic introductions.",
+  1152→  color: "#a06bd6",
+  1153→  lessons: [
+  1154→    {
+  1155→      id: "fr-u1-l1",
+  1156→      title: "Greetings",
+  1157→      description: "bonjour, salut, au revoir.",
+  1158→      type: "lesson",
+  1159→      xp: 10,
+  1160→      vocab: [
+  1161→        { word: "bonjour", translation: "hello / good day", pronunciation: "bohn-zhoor", emoji: "👋" },
+  1162→        { word: "salut", translation: "hi / bye (casual)", pronunciation: "sah-loo", emoji: "✌️" },
+  1163→        { word: "au revoir", translation: "goodbye", pronunciation: "oh ruh-vwahr", emoji: "👋" },
+  1164→        { word: "merci", translation: "thank you", pronunciation: "mehr-see", emoji: "🙏" },
+  1165→        { word: "s'il vous plaît", translation: "please", pronunciation: "seel voo pleh", emoji: "🥺" },
+  1166→      ],
+  1167→      exercises: [
+  1168→        {
+  1169→          id: "e1",
+  1170→          type: "multiple_choice",
+  1171→          prompt: "How do you say 'hello' in French?",
+  1172→          options: ["bonjour", "merci", "au revoir", "salut"],
+  1173→          correctIndex: 0,
+  1174→          explanation: "'Bonjour' is the formal daytime greeting.",
+  1175→          xp: 2,
+  1176→        },
+  1177→        {
+  1178→          id: "e2",
+  1179→          type: "translation",
+  1180→          prompt: "Translate",
+  1181→          promptTranslation: "thank you",
+  1182→          tokens: ["merci", "bonjour", "salut", "revoir"],
+  1183→          correctOrder: "merci",
+  1184→          xp: 2,
+  1185→        },
+  1186→        {
+  1187→          id: "e3",
+  1188→          type: "image_select",
+  1189→          prompt: "Which image means 'merci'?",
+  1190→          images: ["👋", "🙏", "✌️", "🥺"],
+  1191→          correctImageIndex: 1,
+  1192→          promptTranslation: "thank you",
+  1193→          xp: 2,
+  1194→        },
+  1195→        {
+  1196→          id: "e4",
+  1197→          type: "matching",
+  1198→          prompt: "Match",
+  1199→          pairs: [
+  1200→            { left: "bonjour", right: "hello" },
+  1201→            { left: "au revoir", right: "goodbye" },
+  1202→            { left: "merci", right: "thank you" },
+  1203→            { left: "s'il vous plaît", right: "please" },
+  1204→          ],
+  1205→          xp: 2,
+  1206→        },
+  1207→        {
+  1208→          id: "e5",
+  1209→          type: "listening",
+  1210→          prompt: "Tap what you hear",
+  1211→          audioText: "bonjour",
+  1212→          options: ["bonjour", "merci", "salut", "revoir"],
+  1213→          correctIndex: 0,
+  1214→          xp: 2,
+  1215→        },
+  1216→        {
+  1217→          id: "e6",
+  1218→          type: "speaking",
+  1219→          prompt: "Say this",
+  1220→          targetPhrase: "merci",
+  1221→          promptTranslation: "thank you",
+  1222→          hint: "mehr-see",
+  1223→          xp: 2,
+  1224→        },
+  1225→        {
+  1226→          id: "e7",
+  1227→          type: "fill_blank",
+  1228→          prompt: "Complete: hello, ___ (please)",
+  1229→          sentence: "bonjour, ___",
+  1230→          blankAnswer: "s'il vous plaît",
+  1231→          xp: 2,
+  1232→        },
+  1233→      ],
+  1234→    },
+  1235→    {
+  1236→      id: "fr-u1-l2",
+  1237→      title: "Introductions",
+  1238→      description: "Je m'appelle ... — My name is ...",
+  1239→      type: "lesson",
+  1240→      xp: 10,
+  1241→      vocab: [
+  1242→        { word: "je m'appelle", translation: "my name is", pronunciation: "zhuh mah-pehl", emoji: "🪪" },
+  1243→        { word: "comment t'appelles-tu?", translation: "what's your name?", pronunciation: "koh-mahn tah-pehl too", emoji: "❓" },
+  1244→        { word: "enchanté", translation: "nice to meet you", pronunciation: "ahn-shahn-tay", emoji: "🤝" },
+  1245→        { word: "je suis", translation: "I am", pronunciation: "zhuh swee", emoji: "➡️" },
+  1246→      ],
+  1247→      exercises: [
+  1248→        {
+  1249→          id: "e1",
+  1250→          type: "multiple_choice",
+  1251→          prompt: "How do you say 'my name is'?",
+  1252→          options: ["je m'appelle", "tu t'appelles", "enchanté", "je suis"],
+  1253→          correctIndex: 0,
+  1254→          xp: 2,
+  1255→        },
+  1256→        {
+  1257→          id: "e2",
+  1258→          type: "translation",
+  1259→          prompt: "Translate",
+  1260→          promptTranslation: "nice to meet you",
+  1261→          tokens: ["enchanté", "bonjour", "merci", "salut"],
+  1262→          correctOrder: "enchanté",
+  1263→          xp: 2,
+  1264→        },
+  1265→        {
+  1266→          id: "e3",
+  1267→          type: "dialogue",
+  1268→          prompt: "Lumo asks: Comment t'appelles-tu?",
+  1269→          promptTranslation: "What's your name?",
+  1270→          instruction: "Choose the natural reply",
+  1271→          options: ["Je m'appelle Léa", "Au revoir", "Merci", "S'il vous plaît"],
+  1272→          correctIndex: 0,
+  1273→          xp: 2,
+  1274→        },
+  1275→        {
+  1276→          id: "e4",
+  1277→          type: "fill_blank",
+  1278→          prompt: "Complete: I am French.",
+  1279→          sentence: "Je ___ français.",
+  1280→          blankAnswer: "suis",
+  1281→          hint: "Verb 'to be' (1st person)",
+  1282→          xp: 2,
+  1283→        },
+  1284→        {
+  1285→          id: "e5",
+  1286→          type: "matching",
+  1287→          prompt: "Match",
+  1288→          pairs: [
+  1289→            { left: "je m'appelle", right: "my name is" },
+  1290→            { left: "comment t'appelles-tu?", right: "what's your name?" },
+  1291→            { left: "enchanté", right: "nice to meet you" },
+  1292→            { left: "je suis", right: "I am" },
+  1293→          ],
+  1294→          xp: 2,
+  1295→        },
+  1296→        {
+  1297→          id: "e6",
+  1298→          type: "speaking",
+  1299→          prompt: "Say this",
+  1300→          targetPhrase: "je m'appelle",
+  1301→          promptTranslation: "my name is",
+  1302→          hint: "zhuh mah-pehl",
+  1303→          xp: 2,
+  1304→        },
+  1305→      ],
+  1306→    },
+  1307→    {
+  1308→      id: "fr-u1-l3",
+  1309→      title: "Story: Paris Café",
+  1310→      description: "Order a coffee in Paris.",
+  1311→      type: "story",
+  1312→      xp: 15,
+  1313→      exercises: [
+  1314→        {
+  1315→          id: "e1",
+  1316→          type: "dialogue",
+  1317→          prompt: "Server: Bonjour! Qu'est-ce que vous voulez?",
+  1318→          promptTranslation: "Hello! What would you like?",
+  1319→          instruction: "Reply politely",
+  1320→          options: ["Un café, s'il vous plaît", "Salut", "Au revoir", "Merci"],
+  1321→          correctIndex: 0,
+  1322→          xp: 5,
+  1323→        },
+  1324→        {
+  1325→          id: "e2",
+  1326→          type: "translation",
+  1327→          prompt: "Translate",
+  1328→          promptTranslation: "thank you very much",
+  1329→          tokens: ["merci", "beaucoup", "bonjour", "au revoir"],
+  1330→          correctOrder: "merci beaucoup",
+  1331→          xp: 5,
+  1332→        },
+  1333→        {
+  1334→          id: "e3",
+  1335→          type: "multiple_choice",
+  1336→          prompt: "How would you say 'goodbye' when leaving?",
+  1337→          options: ["au revoir", "bonjour", "merci", "salut"],
+  1338→          correctIndex: 0,
+  1339→          xp: 5,
+  1340→        },
+  1341→      ],
+  1342→    },
+  1343→    {
+  1344→      id: "fr-u1-l4",
+  1345→      title: "Review",
+  1346→      description: "Refresh Unit 1.",
+  1347→      type: "review",
+  1348→      xp: 12,
+  1349→      exercises: [
+  1350→        {
+  1351→          id: "e1",
+  1352→          type: "matching",
+  1353→          prompt: "Match",
+  1354→          pairs: [
+  1355→            { left: "bonjour", right: "hello" },
+  1356→            { left: "merci", right: "thank you" },
+  1357→            { left: "je m'appelle", right: "my name is" },
+  1358→            { left: "au revoir", right: "goodbye" },
+  1359→          ],
+  1360→          xp: 3,
+  1361→        },
+  1362→        {
+  1363→          id: "e2",
+  1364→          type: "translation",
+  1365→          prompt: "Translate",
+  1366→          promptTranslation: "please",
+  1367→          tokens: ["s'il", "vous", "plaît", "merci"],
+  1368→          correctOrder: "s'il vous plaît",
+  1369→          xp: 3,
+  1370→        },
+  1371→        {
+  1372→          id: "e3",
+  1373→          type: "fill_blank",
+  1374→          prompt: "Complete: nice to meet you",
+  1375→          sentence: "___!",
+  1376→          blankAnswer: "enchanté",
+  1377→          xp: 3,
+  1378→        },
+  1379→        {
+  1380→          id: "e4",
+  1381→          type: "listening",
+  1382→          prompt: "Tap what you hear",
+  1383→          audioText: "merci",
+  1384→          options: ["merci", "bonjour", "salut", "revoir"],
+  1385→          correctIndex: 0,
+  1386→          xp: 3,
+  1387→        },
+  1388→      ],
+  1389→    },
+  1390→  ],
+  1391→};
+  1392→
+  1393→const frenchUnit2: UnitSpec = {
+  1394→  id: "fr-u2",
+  1395→  title: "Unit 2",
+  1396→  subtitle: "La vie quotidienne — Daily life",
+  1397→  description: "Days, time, and daily routines.",
+  1398→  color: "#4d96ff",
+  1399→  lessons: [
+  1400→    {
+  1401→      id: "fr-u2-l1",
+  1402→      title: "Days of the week",
+  1403→      description: "lundi, mardi, mercredi ...",
+  1404→      type: "lesson",
+  1405→      xp: 10,
+  1406→      vocab: [
+  1407→        { word: "lundi", translation: "Monday", emoji: "📅" },
+  1408→        { word: "mardi", translation: "Tuesday", emoji: "📅" },
+  1409→        { word: "mercredi", translation: "Wednesday", emoji: "📅" },
+  1410→        { word: "jeudi", translation: "Thursday", emoji: "📅" },
+  1411→        { word: "vendredi", translation: "Friday", emoji: "📅" },
+  1412→      ],
+  1413→      exercises: [
+  1414→        {
+  1415→          id: "e1",
+  1416→          type: "multiple_choice",
+  1417→          prompt: "How do you say 'Monday'?",
+  1418→          options: ["lundi", "mardi", "mercredi", "vendredi"],
+  1419→          correctIndex: 0,
+  1420→          xp: 2,
+  1421→        },
+  1422→        {
+  1423→          id: "e2",
+  1424→          type: "matching",
+  1425→          prompt: "Match",
+  1426→          pairs: [
+  1427→            { left: "lundi", right: "Monday" },
+  1428→            { left: "mardi", right: "Tuesday" },
+  1429→            { left: "mercredi", right: "Wednesday" },
+  1430→            { left: "vendredi", right: "Friday" },
+  1431→          ],
+  1432→          xp: 2,
+  1433→        },
+  1434→        {
+  1435→          id: "e3",
+  1436→          type: "translation",
+  1437→          prompt: "Translate",
+  1438→          promptTranslation: "Friday",
+  1439→          tokens: ["vendredi", "lundi", "mardi", "jeudi"],
+  1440→          correctOrder: "vendredi",
+  1441→          xp: 2,
+  1442→        },
+  1443→        {
+  1444→          id: "e4",
+  1445→          type: "fill_blank",
+  1446→          prompt: "Complete: Today is ___ (Tuesday).",
+  1447→          sentence: "Aujourd'hui, c'est ___.",
+  1448→          blankAnswer: "mardi",
+  1449→          xp: 2,
+  1450→        },
+  1451→        {
+  1452→          id: "e5",
+  1453→          type: "listening",
+  1454→          prompt: "Tap what you hear",
+  1455→          audioText: "mercredi",
+  1456→          options: ["mercredi", "lundi", "mardi", "vendredi"],
+  1457→          correctIndex: 0,
+  1458→          xp: 2,
+  1459→        },
+  1460→      ],
+  1461→    },
+  1462→    {
+  1463→      id: "fr-u2-l2",
+  1464→      title: "Challenge: Week Quiz",
+  1465→      description: "Test your week vocabulary.",
+  1466→      type: "challenge",
+  1467→      xp: 20,
+  1468→      exercises: [
+  1469→        {
+  1470→          id: "e1",
+  1471→          type: "true_false",
+  1472→          prompt: "'mercredi' is Wednesday.",
+  1473→          options: ["True", "False"],
+  1474→          correctIndex: 0,
+  1475→          xp: 5,
+  1476→        },
+  1477→        {
+  1478→          id: "e2",
+  1479→          type: "translation",
+  1480→          prompt: "Translate",
+  1481→          promptTranslation: "Monday",
+  1482→          tokens: ["lundi", "mardi", "mercredi", "vendredi"],
+  1483→          correctOrder: "lundi",
+  1484→          xp: 5,
+  1485→        },
+  1486→        {
+  1487→          id: "e3",
+  1488→          type: "matching",
+  1489→          prompt: "Match",
+  1490→          pairs: [
+  1491→            { left: "mardi", right: "Tuesday" },
+  1492→            { left: "jeudi", right: "Thursday" },
+  1493→            { left: "vendredi", right: "Friday" },
+  1494→            { left: "lundi", right: "Monday" },
+  1495→          ],
+  1496→          xp: 5,
+  1497→        },
+  1498→        {
+  1499→          id: "e4",
+  1500→          type: "fill_blank",
+  1501→          prompt: "Complete: Friday",
+  1502→          sentence: "___",
+  1503→          blankAnswer: "vendredi",
+  1504→          xp: 5,
+  1505→        },
+  1506→      ],
+  1507→    },
+  1508→  ],
+  1509→};
+  1510→
+  1511→// ─────────────────────────────────────────────────────────────────
+  1512→// Export catalog
+  1513→// ─────────────────────────────────────────────────────────────────
+  1514→export const COURSES: CourseSpec[] = [
+  1515→  {
+  1516→    id: "course-es",
+  1517→    languageId: "es",
+  1518→    title: "Spanish for English speakers",
+  1519→    description: "Learn Spanish from scratch — greetings, travel, food, and culture.",
+  1520→    iconColor: "#58cc8d",
+  1521→    units: [spanishUnit1, spanishUnit2],
+  1522→  },
+  1523→  {
+  1524→    id: "course-ja",
+  1525→    languageId: "ja",
+  1526→    title: "Japanese for English speakers",
+  1527→    description: "Greetings, food, and essential phrases for travel in Japan.",
+  1528→    iconColor: "#ff6b6b",
+  1529→    units: [japaneseUnit1, japaneseUnit2],
+  1530→  },
+  1531→  {
+  1532→    id: "course-fr",
+  1533→    languageId: "fr",
+  1534→    title: "French for English speakers",
+  1535→    description: "Bonjour! Master everyday French with bite-sized lessons.",
+  1536→    iconColor: "#a06bd6",
+  1537→    units: [frenchUnit1, frenchUnit2],
+  1538→  },
+  1539→];
+  1540→
+  1541→export function findCourse(courseId: string): CourseSpec | undefined {
+  1542→  return COURSES.find((c) => c.id === courseId);
+  1543→}
+  1544→
+  1545→export function findLesson(lessonId: string): { lesson: LessonSpec; course: CourseSpec; unit: UnitSpec } | undefined {
+  1546→  for (const course of COURSES) {
+  1547→    for (const unit of course.units) {
+  1548→      const lesson = unit.lessons.find((l) => l.id === lessonId);
+  1549→      if (lesson) return { lesson, course, unit };
+  1550→    }
+  1551→  }
+  1552→  return undefined;
+  1553→}
+  1554→
+  1555→/** Flatten vocab across a unit for SRS / review */
+  1556→export function collectUnitVocab(unit: UnitSpec): VocabItem[] {
+  1557→  return unit.lessons.flatMap((l) => l.vocab ?? []);
+  1558→}
+  1559→

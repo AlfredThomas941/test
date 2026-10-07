@@ -1,0 +1,810 @@
+     1→"use client";
+     2→
+     3→import * as React from "react";
+     4→import { motion, AnimatePresence } from "framer-motion";
+     5→import { Volume2, Check, X, Mic, Lightbulb, ChevronRight, RotateCw } from "lucide-react";
+     6→import { Button3D } from "@/components/brand/button";
+     7→import { cn } from "@/lib/utils";
+     8→import type { ExerciseSpec } from "@/data/courses";
+     9→import { useApp } from "@/lib/store";
+    10→
+    11→interface ExerciseRunnerProps {
+    12→  exercise: ExerciseSpec;
+    13→  index: number;
+    14→  total: number;
+    15→  onAnswered: (correct: boolean, userAnswer: string, xp: number) => void;
+    16→  onNext: () => void;
+    17→  onQuit: () => void;
+    18→  languageId: string;
+    19→}
+    20→
+    21→export function ExerciseRunner({
+    22→  exercise,
+    23→  index,
+    24→  total,
+    25→  onAnswered,
+    26→  onNext,
+    27→  onQuit,
+    28→  languageId,
+    29→}: ExerciseRunnerProps) {
+    30→  const [userAnswer, setUserAnswer] = React.useState<string>("");
+    31→  const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
+    32→  const [matchedPairs, setMatchedPairs] = React.useState<Record<string, string>>({});
+    33→  const [selectedLeft, setSelectedLeft] = React.useState<string | null>(null);
+    34→  const [selectedRight, setSelectedRight] = React.useState<string | null>(null);
+    35→  const [shuffledRight, setShuffledRight] = React.useState<{ left: string; right: string }[]>([]);
+    36→  const [tokensPlaced, setTokensPlaced] = React.useState<string[]>([]);
+    37→  const [tokensPool, setTokensPool] = React.useState<string[]>([]);
+    38→  const [feedback, setFeedback] = React.useState<null | "correct" | "incorrect">(null);
+    39→  const [showHint, setShowHint] = React.useState(false);
+    40→  const [feedbackShown, setFeedbackShown] = React.useState(false);
+    41→  const [_, forceRerender] = React.useState(0);
+    42→  void _;
+    43→
+    44→  // Reset state on exercise change
+    45→  React.useEffect(() => {
+    46→    setUserAnswer("");
+    47→    setSelectedIdx(null);
+    48→    setMatchedPairs({});
+    49→    setSelectedLeft(null);
+    50→    setSelectedRight(null);
+    51→    setTokensPlaced([]);
+    52→    setFeedback(null);
+    53→    setShowHint(false);
+    54→    setFeedbackShown(false);
+    55→    if (exercise.pairs) {
+    56→      setShuffledRight([...exercise.pairs].sort(() => Math.random() - 0.5));
+    57→    }
+    58→    if (exercise.tokens) {
+    59→      // For word_order, also shuffle the pool
+    60→      setTokensPool([...exercise.tokens].sort(() => Math.random() - 0.5));
+    61→    }
+    62→  }, [exercise.id]);
+    63→
+    64→  const { pushToast, loseHeart, addMistake, addReviewItem, updateConfidence, gamification } = useApp();
+    65→
+    66→  const xp = exercise.xp ?? 2;
+    67→
+    68→  // ─── Validation ────────────────────────────────────────────
+    69→  function validate(): { correct: boolean; userAnswerStr: string } {
+    70→    switch (exercise.type) {
+    71→      case "multiple_choice":
+    72→      case "image_select":
+    73→      case "true_false":
+    74→      case "listening":
+    75→      case "dialogue": {
+    76→        if (selectedIdx === null) return { correct: false, userAnswerStr: "" };
+    77→        const correctIdx = Array.isArray(exercise.correctIndex)
+    78→          ? exercise.correctIndex.includes(selectedIdx)
+    79→          : selectedIdx === exercise.correctIndex;
+    80→        const options = exercise.options ?? exercise.images ?? [];
+    81→        return { correct: correctIdx, userAnswerStr: options[selectedIdx] ?? "" };
+    82→      }
+    83→      case "translation":
+    84→      case "word_order": {
+    85→        const joined = tokensPlaced.join(" ").replace(/\s+/g, " ").trim();
+    86→        const correct = joined.toLowerCase() === (exercise.correctOrder ?? "").toLowerCase();
+    87→        return { correct, userAnswerStr: joined };
+    88→      }
+    89→      case "fill_blank": {
+    90→        const ans = userAnswer.trim().toLowerCase();
+    91→        const correct = ans === (exercise.blankAnswer ?? "").toLowerCase();
+    92→        return { correct, userAnswerStr: userAnswer };
+    93→      }
+    94→      case "matching": {
+    95→        const total = exercise.pairs?.length ?? 0;
+    96→        const matchedCount = Object.keys(matchedPairs).length;
+    97→        const correct = matchedCount === total;
+    98→        const allCorrect =
+    99→          correct &&
+   100→          exercise.pairs!.every((p) => matchedPairs[p.left] === p.right);
+   101→        return { correct: allCorrect, userAnswerStr: JSON.stringify(matchedPairs) };
+   102→      }
+   103→      case "speaking": {
+   104→        // Speaking is simulated; always mark correct (we don't have STT here)
+   105→        return { correct: true, userAnswerStr: "[spoken]" };
+   106→      }
+   107→      default:
+   108→        return { correct: false, userAnswerStr: userAnswer };
+   109→    }
+   110→  }
+   111→
+   112→  function handleCheck() {
+   113→    if (feedback) return;
+   114→    // For matching, auto-evaluate as user matches; we still require Check to confirm
+   115→    const { correct, userAnswerStr } = validate();
+   116→    setFeedback(correct ? "correct" : "incorrect");
+   117→    setFeedbackShown(true);
+   118→    onAnswered(correct, userAnswerStr, correct ? xp : 0);
+   119→    if (!correct) {
+   120→      loseHeart();
+   121→      // Add to mistakes notebook
+   122→      addMistake({
+   123→        languageId,
+   124→        category: exercise.type === "listening" ? "listening" : exercise.type === "speaking" ? "speaking" : "vocab",
+   125→        prompt: exercise.prompt,
+   126→        userAnswer: userAnswerStr || "(no answer)",
+   127→        correctAnswer: getCorrectAnswerString(),
+   128→        explanation: exercise.explanation,
+   129→      });
+   130→      // Reduce confidence
+   131→      updateConfidence(exercise.type === "listening" ? "listening" : exercise.type === "speaking" ? "speaking" : "vocab", -3);
+   132→      pushToast({ text: "Hearts -1", emoji: "💔", variant: "error" });
+   133→    } else {
+   134→      updateConfidence(exercise.type === "listening" ? "listening" : exercise.type === "speaking" ? "speaking" : "vocab", 2);
+   135→    }
+   136→  }
+   137→
+   138→  function getCorrectAnswerString(): string {
+   139→    if (exercise.type === "multiple_choice" || exercise.type === "image_select" || exercise.type === "true_false" || exercise.type === "listening" || exercise.type === "dialogue") {
+   140→      const options = exercise.options ?? exercise.images ?? [];
+   141→      const idx = Array.isArray(exercise.correctIndex) ? exercise.correctIndex[0] : exercise.correctIndex;
+   142→      return options[idx ?? 0] ?? "";
+   143→    }
+   144→    if (exercise.type === "translation" || exercise.type === "word_order") return exercise.correctOrder ?? "";
+   145→    if (exercise.type === "fill_blank") return exercise.blankAnswer ?? "";
+   146→    if (exercise.type === "matching") return "all pairs matched";
+   147→    if (exercise.type === "speaking") return exercise.targetPhrase ?? "";
+   148→    return "";
+   149→  }
+   150→
+   151→  function handleSkip() {
+   152→    setFeedback("incorrect");
+   153→    setFeedbackShown(true);
+   154→    onAnswered(false, "(skipped)", 0);
+   155→    loseHeart();
+   156→  }
+   157→
+   158→  function canCheck(): boolean {
+   159→    switch (exercise.type) {
+   160→      case "multiple_choice":
+   161→      case "image_select":
+   162→      case "true_false":
+   163→      case "listening":
+   164→      case "dialogue":
+   165→        return selectedIdx !== null;
+   166→      case "translation":
+   167→      case "word_order":
+   168→        return tokensPlaced.length > 0;
+   169→      case "fill_blank":
+   170→        return userAnswer.trim().length > 0;
+   171→      case "matching":
+   172→        return Object.keys(matchedPairs).length === (exercise.pairs?.length ?? 0);
+   173→      case "speaking":
+   174→        return true;
+   175→      default:
+   176→        return false;
+   177→    }
+   178→  }
+   179→
+   180→  // ─── Token interactions (word order) ────────────────────────
+   181→  function addToken(token: string, fromPool: boolean) {
+   182→    if (feedback) return;
+   183→    if (fromPool) {
+   184→      setTokensPool((p) => p.filter((t, i) => i !== p.indexOf(token) || p.indexOf(token) !== p.lastIndexOf(token) ? false : true).slice(0, p.length - 1) );
+   185→      // simpler: remove first occurrence
+   186→      const idx = tokensPool.indexOf(token);
+   187→      if (idx >= 0) {
+   188→        const newPool = [...tokensPool];
+   189→        newPool.splice(idx, 1);
+   190→        setTokensPool(newPool);
+   191→        setTokensPlaced((p) => [...p, token]);
+   192→      }
+   193→    } else {
+   194→      const idx = tokensPlaced.indexOf(token);
+   195→      if (idx >= 0) {
+   196→        const newPlaced = [...tokensPlaced];
+   197→        newPlaced.splice(idx, 1);
+   198→        setTokensPlaced(newPlaced);
+   199→        setTokensPool((p) => [...p, token]);
+   200→      }
+   201→    }
+   202→  }
+   203→
+   204→  // ─── Matching interactions ────────────────────────────────
+   205→  function handleLeftClick(left: string) {
+   206→    if (feedback) return;
+   207→    if (matchedPairs[left]) return;
+   208→    setSelectedLeft(left);
+   209→    if (selectedRight) {
+   210→      // Check pair
+   211→      const pair = exercise.pairs?.find((p) => p.left === left);
+   212→      if (pair && pair.right === selectedRight) {
+   213→        const next = { ...matchedPairs, [left]: selectedRight };
+   214→        setMatchedPairs(next);
+   215→        setSelectedLeft(null);
+   216→        setSelectedRight(null);
+   217→        pushToast({ text: "Match!", emoji: "✨", variant: "success" });
+   218→      } else {
+   219→        // wrong — flash and reset
+   220→        setSelectedRight(null);
+   221→        pushToast({ text: "Try again", emoji: "🤔", variant: "info" });
+   222→      }
+   223→    }
+   224→  }
+   225→  function handleRightClick(right: string) {
+   226→    if (feedback) return;
+   227→    if (Object.values(matchedPairs).includes(right)) return;
+   228→    setSelectedRight(right);
+   229→    if (selectedLeft) {
+   230→      const pair = exercise.pairs?.find((p) => p.left === selectedLeft);
+   231→      if (pair && pair.right === right) {
+   232→        const next = { ...matchedPairs, [selectedLeft]: right };
+   233→        setMatchedPairs(next);
+   234→        setSelectedLeft(null);
+   235→        setSelectedRight(null);
+   236→        pushToast({ text: "Match!", emoji: "✨", variant: "success" });
+   237→      } else {
+   238→        setSelectedLeft(null);
+   239→        pushToast({ text: "Try again", emoji: "🤔", variant: "info" });
+   240→      }
+   241→    }
+   242→  }
+   243→
+   244→  // ─── Audio (use Web Speech API) ────────────────────────────
+   245→  function speak(text: string, lang: string) {
+   246→    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+   247→    try {
+   248→      const u = new SpeechSynthesisUtterance(text);
+   249→      const langMap: Record<string, string> = { es: "es-ES", ja: "ja-JP", fr: "fr-FR" };
+   250→      u.lang = langMap[lang] ?? "en-US";
+   251→      u.rate = 0.9;
+   252→      window.speechSynthesis.cancel();
+   253→      window.speechSynthesis.speak(u);
+   254→    } catch (e) {
+   255→      // ignore
+   256→    }
+   257→  }
+   258→
+   259→  // ─── Speaking (simulate; record + auto-confirm) ─────────────
+   260→  const [recording, setRecording] = React.useState(false);
+   261→  function handleSpeak() {
+   262→    setRecording(true);
+   263→    setTimeout(() => {
+   264→      setRecording(false);
+   265→      setFeedback("correct");
+   266→      setFeedbackShown(true);
+   267→      onAnswered(true, "[spoken]", xp);
+   268→      pushToast({ text: "Great pronunciation!", emoji: "🎙️", variant: "success" });
+   269→    }, 1500);
+   270→  }
+   271→
+   272→  // ─── Render ────────────────────────────────────────────────
+   273→  return (
+   274→    <div className="max-w-2xl mx-auto px-4 py-6">
+   275→      {/* Top bar: progress + quit */}
+   276→      <div className="flex items-center gap-3 mb-6">
+   277→        <button
+   278→          onClick={onQuit}
+   279→          className="w-9 h-9 rounded-full grid place-items-center text-[#8b7d6b] hover:bg-[#fff0d6] transition"
+   280→          aria-label="Quit lesson"
+   281→        >
+   282→          <X size={20} />
+   283→        </button>
+   284→        <div className="flex-1 h-3 bg-[#fff0d6] rounded-full overflow-hidden">
+   285→          <motion.div
+   286→            className="h-full bg-[#58cc8d] rounded-full"
+   287→            initial={{ width: 0 }}
+   288→            animate={{ width: `${((index + 1) / total) * 100}%` }}
+   289→            transition={{ duration: 0.4, ease: "easeOut" }}
+   290→          />
+   291→        </div>
+   292→        <div className="flex items-center gap-1 font-bold text-[#ff4757]">
+   293→          <span aria-hidden>❤️</span>
+   294→          <span className="tabular-nums">{gamification.hearts}</span>
+   295→        </div>
+   296→      </div>
+   297→
+   298→      {/* Exercise prompt */}
+   299→      <ExerciseHeader exercise={exercise} languageId={languageId} speak={speak} />
+   300→
+   301→      {/* Exercise body */}
+   302→      <div className="mt-6 mb-6 min-h-[260px]">
+   303→        <ExerciseBody
+   304→          exercise={exercise}
+   305→          selectedIdx={selectedIdx}
+   306→          setSelectedIdx={(i) => !feedback && setSelectedIdx(i)}
+   307→          userAnswer={userAnswer}
+   308→          setUserAnswer={(v) => !feedback && setUserAnswer(v)}
+   309→          matchedPairs={matchedPairs}
+   310→          selectedLeft={selectedLeft}
+   311→          selectedRight={selectedRight}
+   312→          onLeftClick={handleLeftClick}
+   313→          onRightClick={handleRightClick}
+   314→          tokensPlaced={tokensPlaced}
+   315→          tokensPool={tokensPool}
+   316→          onAddToken={(t, p) => addToken(t, p)}
+   317→          feedback={feedback}
+   318→          languageId={languageId}
+   319→          speak={speak}
+   320→          recording={recording}
+   321→          onSpeak={handleSpeak}
+   322→        />
+   323→      </div>
+   324→
+   325→      {/* Hint toggle */}
+   326→      {exercise.hint && !feedback && (
+   327→        <button
+   328→          onClick={() => setShowHint((v) => !v)}
+   329→          className="inline-flex items-center gap-1.5 text-sm font-bold text-[#4d96ff] hover:underline mb-2"
+   330→        >
+   331→          <Lightbulb size={16} /> {showHint ? "Hide hint" : "Show hint"}
+   332→        </button>
+   333→      )}
+   334→      {showHint && exercise.hint && (
+   335→        <div className="text-sm bg-[#fff0d6] rounded-xl p-3 mb-2 text-[#6b4f1d] font-semibold">
+   336→          💡 {exercise.hint}
+   337→        </div>
+   338→      )}
+   339→
+   340→      {/* Feedback panel */}
+   341→      <AnimatePresence>
+   342→        {feedback && (
+   343→          <motion.div
+   344→            initial={{ y: 60, opacity: 0 }}
+   345→            animate={{ y: 0, opacity: 1 }}
+   346→            exit={{ y: 60, opacity: 0 }}
+   347→            transition={{ type: "spring", stiffness: 260, damping: 26 }}
+   348→            className={cn(
+   349→              "fixed bottom-0 inset-x-0 md:absolute md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-2xl z-20",
+   350→              "p-4 md:rounded-t-3xl border-t-4 shadow-2xl",
+   351→              feedback === "correct" ? "bg-[#d7ffe5] border-[#58cc8d]" : "bg-[#ffe3e3] border-[#ff4757]"
+   352→            )}
+   353→            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+   354→          >
+   355→            <div className="max-w-2xl mx-auto">
+   356→              <div className="flex items-center gap-3 mb-2">
+   357→                <div
+   358→                  className={cn(
+   359→                    "w-10 h-10 rounded-full grid place-items-center text-white",
+   360→                    feedback === "correct" ? "bg-[#58cc8d]" : "bg-[#ff4757]"
+   361→                  )}
+   362→                >
+   363→                  {feedback === "correct" ? <Check size={22} /> : <X size={22} />}
+   364→                </div>
+   365→                <div className="flex-1">
+   366→                  <div className={cn("font-extrabold text-lg", feedback === "correct" ? "text-[#2a8a4f]" : "text-[#c83243]")}>
+   367→                    {feedback === "correct" ? "Nicely done!" : "Not quite..."}
+   368→                  </div>
+   369→                  {feedback === "correct" && (
+   370→                    <div className="text-sm font-bold text-[#2a8a4f]/80">+{xp} XP</div>
+   371→                  )}
+   372→                </div>
+   373→              </div>
+   374→              {feedback === "incorrect" && (
+   375→                <div className="bg-white rounded-xl p-3 mb-3">
+   376→                  <div className="text-xs font-bold uppercase tracking-wide text-[#8b7d6b] mb-1">Correct answer</div>
+   377→                  <div className="font-bold text-[#2c2334]">{getCorrectAnswerString()}</div>
+   378→                  {exercise.explanation && (
+   379→                    <div className="text-sm text-[#8b7d6b] mt-2">{exercise.explanation}</div>
+   380→                  )}
+   381→                </div>
+   382→              )}
+   383→              {feedback === "correct" && exercise.explanation && (
+   384→                <div className="bg-white/50 rounded-xl p-3 mb-3 text-sm text-[#2a8a4f]">
+   385→                  {exercise.explanation}
+   386→                </div>
+   387→              )}
+   388→              <Button3D
+   389→                variant={feedback === "correct" ? "primary" : "danger"}
+   390→                size="lg"
+   391→                full
+   392→                onClick={onNext}
+   393→                style={
+   394→                  feedback === "correct"
+   395→                    ? ({ ["--btn-shadow" as any]: "#44b277" } as React.CSSProperties)
+   396→                    : ({ ["--btn-shadow" as any]: "#d63545" } as React.CSSProperties)
+   397→                }
+   398→              >
+   399→                Continue <ChevronRight size={18} />
+   400→              </Button3D>
+   401→            </div>
+   402→          </motion.div>
+   403→        )}
+   404→      </AnimatePresence>
+   405→
+   406→      {/* Bottom action bar (when no feedback) */}
+   407→      {!feedback && (
+   408→        <div className="flex items-center gap-3 mt-4">
+   409→          <Button3D variant="ghost" size="lg" onClick={handleSkip} className="text-[#8b7d6b]">
+   410→            Skip
+   411→          </Button3D>
+   412→          <div className="flex-1" />
+   413→          <Button3D
+   414→            variant={canCheck() ? "primary" : "secondary"}
+   415→            size="lg"
+   416→            disabled={!canCheck()}
+   417→            onClick={handleCheck}
+   418→            style={
+   419→              canCheck()
+   420→                ? ({ ["--btn-shadow" as any]: "#44b277" } as React.CSSProperties)
+   421→                : ({ ["--btn-shadow" as any]: "#e8dcc4" } as React.CSSProperties)
+   422→            }
+   423→          >
+   424→            Check
+   425→          </Button3D>
+   426→        </div>
+   427→      )}
+   428→    </div>
+   429→  );
+   430→}
+   431→
+   432→function ExerciseHeader({
+   433→  exercise,
+   434→  languageId,
+   435→  speak,
+   436→}: {
+   437→  exercise: ExerciseSpec;
+   438→  languageId: string;
+   439→  speak: (text: string, lang: string) => void;
+   440→}) {
+   441→  return (
+   442→    <div>
+   443→      <div className="flex items-center justify-between mb-2">
+   444→        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#8b7d6b]">
+   445→          {EXERCISE_LABELS[exercise.type]}
+   446→        </span>
+   447→        {exercise.instruction && (
+   448→          <span className="text-xs text-[#8b7d6b]">{exercise.instruction}</span>
+   449→        )}
+   450→      </div>
+   451→      <h2 className="text-2xl md:text-3xl font-extrabold text-[#2c2334] leading-tight">
+   452→        {exercise.prompt}
+   453→      </h2>
+   454→      {exercise.promptTranslation && (
+   455→        <p className="text-base text-[#8b7d6b] mt-1">{exercise.promptTranslation}</p>
+   456→      )}
+   457→      {exercise.type === "listening" && exercise.audioText && (
+   458→        <button
+   459→          onClick={() => speak(exercise.audioText!, languageId)}
+   460→          className="mt-4 inline-flex items-center gap-3 px-5 py-3 rounded-2xl bg-[#fff0d6] hover:bg-[#ffe6b8] transition shadow-chunk-sm"
+   461→          style={{ ["--btn-shadow" as any]: "#e8dcc4" } as React.CSSProperties}
+   462→          aria-label="Play audio"
+   463→        >
+   464→          <Volume2 size={24} className="text-[#4d96ff]" />
+   465→          <span className="font-bold text-[#2c2334]">Play</span>
+   466→        </button>
+   467→      )}
+   468→    </div>
+   469→  );
+   470→}
+   471→
+   472→const EXERCISE_LABELS: Record<ExerciseSpec["type"], string> = {
+   473→  multiple_choice: "Choose the answer",
+   474→  translation: "Translate",
+   475→  word_order: "Order the words",
+   476→  fill_blank: "Fill in the blank",
+   477→  matching: "Match the pairs",
+   478→  listening: "Tap what you hear",
+   479→  speaking: "Speak the phrase",
+   480→  image_select: "Choose the image",
+   481→  dialogue: "Reply to Lumo",
+   482→  spell: "Spell the word",
+   483→  true_false: "True or False",
+   484→};
+   485→
+   486→function ExerciseBody({
+   487→  exercise,
+   488→  selectedIdx,
+   489→  setSelectedIdx,
+   490→  userAnswer,
+   491→  setUserAnswer,
+   492→  matchedPairs,
+   493→  selectedLeft,
+   494→  selectedRight,
+   495→  onLeftClick,
+   496→  onRightClick,
+   497→  tokensPlaced,
+   498→  tokensPool,
+   499→  onAddToken,
+   500→  feedback,
+   501→  languageId,
+   502→  speak,
+   503→  recording,
+   504→  onSpeak,
+   505→}: {
+   506→  exercise: ExerciseSpec;
+   507→  selectedIdx: number | null;
+   508→  setSelectedIdx: (i: number) => void;
+   509→  userAnswer: string;
+   510→  setUserAnswer: (v: string) => void;
+   511→  matchedPairs: Record<string, string>;
+   512→  selectedLeft: string | null;
+   513→  selectedRight: string | null;
+   514→  onLeftClick: (l: string) => void;
+   515→  onRightClick: (r: string) => void;
+   516→  tokensPlaced: string[];
+   517→  tokensPool: string[];
+   518→  onAddToken: (t: string, fromPool: boolean) => void;
+   519→  feedback: null | "correct" | "incorrect";
+   520→  languageId: string;
+   521→  speak: (text: string, lang: string) => void;
+   522→  recording: boolean;
+   523→  onSpeak: () => void;
+   524→}) {
+   525→  switch (exercise.type) {
+   526→    case "multiple_choice":
+   527→    case "true_false":
+   528→    case "listening":
+   529→    case "dialogue":
+   530→      return (
+   531→        <div className="grid gap-3">
+   532→          {(exercise.options ?? []).map((opt, i) => {
+   533→            const selected = selectedIdx === i;
+   534→            const correctIdx = Array.isArray(exercise.correctIndex) ? exercise.correctIndex[0] : exercise.correctIndex;
+   535→            const showCorrect = feedback && i === correctIdx;
+   536→            const showWrong = feedback === "incorrect" && selected && i !== correctIdx;
+   537→            return (
+   538→              <button
+   539→                key={i}
+   540→                onClick={() => setSelectedIdx(i)}
+   541→                disabled={!!feedback}
+   542→                className={cn(
+   543→                  "relative text-left px-5 py-4 rounded-2xl border-2 font-bold text-lg transition-all no-tap-highlight flex items-center gap-3",
+   544→                  showCorrect
+   545→                    ? "border-[#58cc8d] bg-[#d7ffe5] text-[#2a8a4f]"
+   546→                    : showWrong
+   547→                    ? "border-[#ff4757] bg-[#ffe3e3] text-[#c83243]"
+   548→                    : selected
+   549→                    ? "border-[#4d96ff] bg-[#e6f0ff] text-[#2c2334]"
+   550→                    : "border-[#e8dcc4] bg-white text-[#2c2334] hover:border-[#4d96ff] hover:bg-[#f5f9ff]"
+   551→                )}
+   552→              >
+   553→                <span
+   554→                  className={cn(
+   555→                    "w-8 h-8 shrink-0 rounded-lg grid place-items-center border-2 font-bold text-sm",
+   556→                    selected ? "border-[#4d96ff] bg-[#4d96ff] text-white" : "border-[#e8dcc4] text-[#8b7d6b]"
+   557→                  )}
+   558→                >
+   559→                  {String.fromCharCode(65 + i)}
+   560→                </span>
+   561→                <span className="flex-1">{opt}</span>
+   562→                {showCorrect && <Check className="text-[#58cc8d]" size={22} />}
+   563→                {showWrong && <X className="text-[#ff4757]" size={22} />}
+   564→              </button>
+   565→            );
+   566→          })}
+   567→          {exercise.type === "listening" && exercise.audioText && (
+   568→            <button
+   569→              onClick={() => speak(exercise.audioText!, languageId)}
+   570→              className="inline-flex items-center gap-2 text-[#4d96ff] font-bold text-sm hover:underline mt-2"
+   571→            >
+   572→              <RotateCw size={14} /> Replay audio
+   573→            </button>
+   574→          )}
+   575→        </div>
+   576→      );
+   577→
+   578→    case "image_select":
+   579→      return (
+   580→        <div className="grid grid-cols-2 gap-3">
+   581→          {(exercise.images ?? []).map((img, i) => {
+   582→            const selected = selectedIdx === i;
+   583→            const correctIdx = exercise.correctImageIndex ?? 0;
+   584→            const showCorrect = feedback && i === correctIdx;
+   585→            const showWrong = feedback === "incorrect" && selected && i !== correctIdx;
+   586→            return (
+   587→              <button
+   588→                key={i}
+   589→                onClick={() => setSelectedIdx(i)}
+   590→                disabled={!!feedback}
+   591→                className={cn(
+   592→                  "relative aspect-square rounded-2xl border-2 grid place-items-center text-6xl transition-all hover:scale-[1.02] no-tap-highlight",
+   593→                  showCorrect
+   594→                    ? "border-[#58cc8d] bg-[#d7ffe5]"
+   595→                    : showWrong
+   596→                    ? "border-[#ff4757] bg-[#ffe3e3]"
+   597→                    : selected
+   598→                    ? "border-[#4d96ff] bg-[#e6f0ff]"
+   599→                    : "border-[#e8dcc4] bg-white"
+   600→                )}
+   601→              >
+   602→                <span>{img}</span>
+   603→                {showCorrect && (
+   604→                  <span className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#58cc8d] text-white grid place-items-center">
+   605→                    <Check size={16} />
+   606→                  </span>
+   607→                )}
+   608→                {showWrong && (
+   609→                  <span className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#ff4757] text-white grid place-items-center">
+   610→                    <X size={16} />
+   611→                  </span>
+   612→                )}
+   613→              </button>
+   614→            );
+   615→          })}
+   616→        </div>
+   617→      );
+   618→
+   619→    case "matching":
+   620→      return (
+   621→        <div className="grid grid-cols-2 gap-3">
+   622→          <div className="space-y-3">
+   623→            {exercise.pairs?.map((p) => {
+   624→              const matched = matchedPairs[p.left];
+   625→              const selected = selectedLeft === p.left;
+   626→              return (
+   627→                <button
+   628→                  key={p.left}
+   629→                  onClick={() => onLeftClick(p.left)}
+   630→                  disabled={!!matched || !!feedback}
+   631→                  className={cn(
+   632→                    "w-full px-4 py-4 rounded-2xl border-2 font-bold text-lg transition-all no-tap-highlight",
+   633→                    matched
+   634→                      ? "border-[#58cc8d] bg-[#d7ffe5] text-[#2a8a4f] opacity-70"
+   635→                      : selected
+   636→                      ? "border-[#4d96ff] bg-[#e6f0ff]"
+   637→                      : "border-[#e8dcc4] bg-white hover:border-[#4d96ff]"
+   638→                  )}
+   639→                >
+   640→                  {p.left}
+   641→                </button>
+   642→              );
+   643→            })}
+   644→          </div>
+   645→          <div className="space-y-3">
+   646→            {[...(exercise.pairs ?? [])]
+   647→              .sort(() => 0.5 - Math.random())
+   648→              .map((p) => {
+   649→                const matched = Object.entries(matchedPairs).find(([_, r]) => r === p.right);
+   650→                const selected = selectedRight === p.right;
+   651→                return (
+   652→                  <button
+   653→                    key={p.right}
+   654→                    onClick={() => onRightClick(p.right)}
+   655→                    disabled={!!matched || !!feedback}
+   656→                    className={cn(
+   657→                      "w-full px-4 py-4 rounded-2xl border-2 font-bold text-lg transition-all no-tap-highlight",
+   658→                      matched
+   659→                        ? "border-[#58cc8d] bg-[#d7ffe5] text-[#2a8a4f] opacity-70"
+   660→                        : selected
+   661→                        ? "border-[#4d96ff] bg-[#e6f0ff]"
+   662→                        : "border-[#e8dcc4] bg-white hover:border-[#4d96ff]"
+   663→                    )}
+   664→                  >
+   665→                    {p.right}
+   666→                  </button>
+   667→                );
+   668→              })}
+   669→          </div>
+   670→        </div>
+   671→      );
+   672→
+   673→    case "translation":
+   674→    case "word_order":
+   675→      return (
+   676→        <div>
+   677→          {/* Answer slot */}
+   678→          <div className="min-h-[80px] border-b-2 border-dashed border-[#e8dcc4] p-3 mb-4 flex flex-wrap gap-2 items-start">
+   679→            {tokensPlaced.length === 0 && (
+   680→              <span className="text-[#8b7d6b] text-sm italic">Tap words below to build your answer</span>
+   681→            )}
+   682→            {tokensPlaced.map((t, i) => (
+   683→              <button
+   684→                key={i}
+   685→                onClick={() => onAddToken(t, false)}
+   686→                disabled={!!feedback}
+   687→                className="px-3 py-2 rounded-xl bg-white border-2 border-[#e8dcc4] font-bold text-[#2c2334] hover:border-[#ff4757] transition"
+   688→              >
+   689→                {t}
+   690→              </button>
+   691→            ))}
+   692→          </div>
+   693→          {/* Token pool */}
+   694→          <div className="flex flex-wrap gap-2">
+   695→            {tokensPool.map((t, i) => (
+   696→              <button
+   697→                key={i}
+   698→                onClick={() => onAddToken(t, true)}
+   699→                disabled={!!feedback}
+   700→                className="px-3 py-2 rounded-xl bg-white border-2 border-[#e8dcc4] font-bold text-[#2c2334] hover:border-[#58cc8d] hover:bg-[#f5fcf8] transition shadow-chunk-sm"
+   701→                style={{ ["--btn-shadow" as any]: "#e8dcc4" } as React.CSSProperties}
+   702→              >
+   703→                {t}
+   704→              </button>
+   705→            ))}
+   706→            {tokensPool.length === 0 && !feedback && (
+   707→              <span className="text-[#8b7d6b] text-sm italic">All words used!</span>
+   708→            )}
+   709→          </div>
+   710→          {feedback && (
+   711→            <div className="mt-4 text-sm">
+   712→              <div className="font-bold text-[#8b7d6b]">You said:</div>
+   713→              <div className={cn("font-bold", feedback === "correct" ? "text-[#2a8a4f]" : "text-[#c83243]")}>
+   714→                {tokensPlaced.join(" ")}
+   715→              </div>
+   716→              {exercise.tokensTranslation && (
+   717→                <div className="mt-2 text-[#8b7d6b] italic">Meaning: {exercise.tokensTranslation}</div>
+   718→              )}
+   719→            </div>
+   720→          )}
+   721→        </div>
+   722→      );
+   723→
+   724→    case "fill_blank":
+   725→      return (
+   726→        <div>
+   727→          <div className="text-2xl md:text-3xl font-extrabold text-[#2c2334] mb-4 leading-relaxed">
+   728→            {renderSentenceWithBlank(exercise.sentence ?? "", userAnswer)}
+   729→          </div>
+   730→          <input
+   731→            type="text"
+   732→            value={userAnswer}
+   733→            onChange={(e) => setUserAnswer(e.target.value)}
+   734→            disabled={!!feedback}
+   735→            autoFocus
+   736→            className="w-full px-4 py-3 rounded-2xl border-2 border-[#e8dcc4] focus:border-[#4d96ff] outline-none font-bold text-lg bg-white"
+   737→            placeholder="Type your answer..."
+   738→            aria-label="Your answer"
+   739→          />
+   740→          {feedback && exercise.blankAnswer && (
+   741→            <div className="mt-3 text-sm">
+   742→              <span className="font-bold text-[#8b7d6b]">Correct: </span>
+   743→              <span className="font-bold text-[#58cc8d]">{exercise.blankAnswer}</span>
+   744→            </div>
+   745→          )}
+   746→        </div>
+   747→      );
+   748→
+   749→    case "speaking":
+   750→      return (
+   751→        <div className="flex flex-col items-center gap-4 py-4">
+   752→          <div className="text-center">
+   753→            <div className="text-3xl font-extrabold text-[#2c2334]">{exercise.targetPhrase}</div>
+   754→            {exercise.promptTranslation && (
+   755→              <div className="text-[#8b7d6b] mt-1">{exercise.promptTranslation}</div>
+   756→            )}
+   757→            {exercise.hint && (
+   758→              <div className="text-sm text-[#4d96ff] font-bold mt-2">/ {exercise.hint} /</div>
+   759→            )}
+   760→          </div>
+   761→          <button
+   762→            onClick={onSpeak}
+   763→            disabled={recording || !!feedback}
+   764→            className={cn(
+   765→              "w-28 h-28 rounded-full grid place-items-center transition shadow-chunk",
+   766→              recording
+   767→                ? "bg-[#ff4757] animate-pulse"
+   768→                : "bg-[#58cc8d] hover:bg-[#44b277]"
+   769→            )}
+   770→            style={{ ["--btn-shadow" as any]: recording ? "#d63545" : "#44b277" } as React.CSSProperties}
+   771→            aria-label={recording ? "Listening..." : "Hold to speak"}
+   772→          >
+   773→            <Mic size={42} className="text-white" />
+   774→          </button>
+   775→          <p className="text-sm text-[#8b7d6b]">{recording ? "Listening..." : "Tap and speak the phrase"}</p>
+   776→        </div>
+   777→      );
+   778→
+   779→    default:
+   780→      return <div className="text-[#8b7d6b]">Unknown exercise type.</div>;
+   781→  }
+   782→}
+   783→
+   784→function renderSentenceWithBlank(sentence: string, answer: string) {
+   785→  // Render the sentence with __BLANK__ replaced by an inline answer box
+   786→  const parts = sentence.split(/_{2,}/);
+   787→  if (parts.length === 1) return sentence;
+   788→  return (
+   789→    <>
+   790→      {parts.map((p, i) => (
+   791→        <React.Fragment key={i}>
+   792→          {p}
+   793→          {i < parts.length - 1 && (
+   794→            <span
+   795→              className={cn(
+   796→                "inline-block min-w-[100px] mx-1 px-2 py-0.5 rounded-lg border-b-2 align-baseline",
+   797→                answer
+   798→                  ? "border-[#58cc8d] bg-[#d7ffe5]/30 text-[#2a8a4f]"
+   799→                  : "border-[#4d96ff] bg-[#e6f0ff]/30"
+   800→              )}
+   801→            >
+   802→              {answer || "\u00A0"}
+   803→            </span>
+   804→          )}
+   805→        </React.Fragment>
+   806→      ))}
+   807→    </>
+   808→  );
+   809→}
+   810→

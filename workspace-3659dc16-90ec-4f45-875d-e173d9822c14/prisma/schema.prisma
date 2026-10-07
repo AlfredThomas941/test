@@ -1,0 +1,376 @@
+// Lingoland Prisma schema
+// Full data model for language learning app
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String?
+  role          String   @default("learner") // learner | instructor | moderator | admin
+  avatar        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastActiveAt  DateTime @default(now())
+
+  profile       Profile?
+  progress      Progress[]
+  attempts      Attempt[]
+  xpTransactions XPTransaction[]
+  achievements  UserAchievement[]
+  questProgress UserQuest[]
+  mistakes      Mistake[]
+  reviewItems   ReviewItem[]
+  aiConversations AIConversation[]
+  friends       Friend[]      @relation("FriendUser")
+  friendOf      Friend[]      @relation("FriendTarget")
+  notifications Notification[]
+  purchases     Purchase[]
+  subscriptions Subscription[]
+  sessions      Session[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeCourseId  String?
+  totalXP         Int      @default(0)
+  weeklyXP        Int      @default(0)
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  lastLessonAt    DateTime?
+  hearts          Int      @default(5)
+  maxHearts       Int      @default(5)
+  gems            Int      @default(50)
+  league          String   @default("Bronze") // Bronze|Silver|Gold|Sapphire|Ruby|Diamond
+  leagueRank      Int      @default(0)
+  focusMode      Boolean  @default(false)
+  dailyGoalXP     Int      @default(50)
+  selectedMascot  String   @default("lumo")
+  bio             String?
+  country         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Personalization signals (0-100)
+  confidenceVocab     Int @default(20)
+  confidenceGrammar   Int @default(20)
+  confidenceListening Int @default(20)
+  confidenceSpeaking  Int @default(20)
+  confidenceReading   Int @default(20)
+  confidenceWriting   Int @default(20)
+  conversationStreak  Int @default(0)
+
+  // Mascot cosmetics (JSON-ish; SQLite stores as text)
+  cosmetics       String   @default("{}")
+}
+
+// ─── Catalog: Languages, Courses, Units, Lessons ──────────────────
+model Language {
+  id           String  @id
+  name         String
+  nativeName   String
+  flag         String
+  bcp47        String
+  courses      Course[]
+}
+
+model Course {
+  id           String   @id @default(cuid())
+  languageId   String
+  language     Language @relation(fields: [languageId], references: [id])
+  title        String
+  description  String
+  iconColor    String   @default("#58cc8d")
+  isPublished  Boolean  @default(true)
+  order        Int      @default(0)
+  units        Unit[]
+  progress     Progress[]
+}
+
+model Unit {
+  id           String   @id @default(cuid())
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title        String
+  subtitle     String
+  description  String
+  color        String   @default("#4d96ff")
+  order        Int
+  lessons      Lesson[]
+}
+
+model Lesson {
+  id           String   @id @default(cuid())
+  unitId       String
+  unit         Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  title        String
+  description  String
+  type         String   @default("lesson") // lesson | story | practice | challenge | review | speaking
+  order        Int
+  xp          Int      @default(10)
+  // JSON-encoded list of exercise specs
+  exercises    String
+  // JSON-encoded list of vocab keys covered
+  vocab        String   @default("[]")
+  isBonus      Boolean  @default(false)
+}
+
+// ─── Vocabulary & Grammar (catalog) ───────────────────────────────
+model Vocabulary {
+  id           String   @id @default(cuid())
+  languageId   String
+  word         String
+  translation  String
+  pronunciation String?
+  partOfSpeech String?
+  example      String?
+  exampleTranslation String?
+  difficulty   Int      @default(1) // 1-5
+  audioUrl     String?
+  tags         String   @default("[]") // JSON array
+  imageUrl     String?
+  createdAt    DateTime @default(now())
+}
+
+model GrammarTopic {
+  id           String   @id @default(cuid())
+  languageId   String
+  title        String
+  summary      String
+  explanation  String
+  examples     String   @default("[]") // JSON array of {source, translation}
+  difficulty   Int      @default(1)
+}
+
+// ─── User Progress ────────────────────────────────────────────────
+model Progress {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id])
+  currentUnitOrder Int  @default(1)
+  currentLessonOrder Int @default(1)
+  completedLessons String @default("[]") // JSON array of lesson IDs
+  lessonStars  String   @default("{}")   // JSON: lessonId -> 0..3
+  lastVisitedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, courseId])
+}
+
+model Attempt {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId     String
+  exerciseType String
+  prompt       String
+  userAnswer   String
+  correctAnswer String
+  isCorrect    Boolean
+  responseMs   Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+model XPTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Int
+  reason       String   // lesson | practice | quest | achievement | bonus | challenge | ai_tutor
+  metadata     String   @default("{}")
+  createdAt    DateTime @default(now())
+}
+
+// ─── Gamification ────────────────────────────────────────────────
+model Achievement {
+  id           String   @id
+  title        String
+  description  String
+  icon         String
+  tier         String   @default("bronze") // bronze | silver | gold | platinum
+  category     String   // streak | xp | lesson | skill | social | special
+  requirement  Int      // numeric threshold
+  requirementLabel String
+  xp           Int      @default(50)
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement  Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt   DateTime @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model Quest {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  type         String   // daily | weekly | monthly
+  goalType     String   // xp | lessons | perfect | minutes | streak
+  goalAmount   Int
+  xp           Int
+  gems         Int
+  icon         String
+  color        String   @default("#4d96ff")
+  startsAt     DateTime
+  endsAt       DateTime
+  userQuests   UserQuest[]
+}
+
+model UserQuest {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questId      String
+  quest        Quest    @relation(fields: [questId], references: [id])
+  progress     Int      @default(0)
+  completed    Boolean  @default(false)
+  claimed      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, questId])
+}
+
+model ShopItem {
+  id           String   @id @default(cuid())
+  name         String
+  description  String
+  category     String   // cosmetic | boost | heart | streak | bundle
+  priceGems    Int
+  priceUSD     Float?
+  icon         String
+  color        String
+  rarity       String   @default("common")
+  isAvailable  Boolean  @default(true)
+}
+
+model Purchase {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId       String
+  itemName     String
+  priceGems    Int      @default(0)
+  priceUSD     Float   @default(0)
+  createdAt    DateTime @default(now())
+}
+
+model Subscription {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         String   // free | plus | family
+  status       String   @default("active")
+  startedAt    DateTime @default(now())
+  endsAt       DateTime?
+  priceUSD     Float
+  interval     String   @default("monthly")
+}
+
+// ─── Social ──────────────────────────────────────────────────────
+model Friend {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("FriendUser", fields: [userId], references: [id], onDelete: Cascade)
+  targetId     String
+  target       User     @relation("FriendTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  status       String   @default("accepted") // pending | accepted | blocked
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, targetId])
+}
+
+model Notification {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String   // friend | quest | achievement | streak | leaderboard | system
+  title        String
+  body         String
+  icon         String   @default("bell")
+  link         String?
+  read         Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// ─── Personalization & SRS ────────────────────────────────────────
+model Mistake {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  languageId   String
+  category     String   // vocab | grammar | listening | speaking | reading
+  prompt       String
+  userAnswer   String
+  correctAnswer String
+  explanation  String?
+  occurrences   Int      @default(1)
+  lastAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, prompt, userAnswer])
+}
+
+model ReviewItem {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vocabularyId String?
+  word         String
+  translation  String
+  pronunciation String?
+  languageId   String
+  // Spaced repetition: SM-2 simplified
+  strength     Float    @default(0.2) // 0..1
+  intervalDays Int      @default(1)
+  easeFactor   Float    @default(2.5)
+  repetitions  Int      @default(0)
+  correctCount Int      @default(0)
+  wrongCount   Int      @default(0)
+  lastReviewAt DateTime?
+  nextReviewAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+}
+
+// ─── AI Tutor ────────────────────────────────────────────────────
+model AIConversation {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  languageId   String
+  scenario     String   // restaurant | airport | hotel | shopping | travel | interview | casual | business | dating | meeting
+  title        String
+  difficulty   String   @default("A2")
+  messages     String   @default("[]") // JSON array
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
